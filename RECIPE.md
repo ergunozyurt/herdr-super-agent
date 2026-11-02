@@ -11,7 +11,7 @@ Super Agent adds a threaded inbox between a person and their main Herdr agents. 
 - `~/.local/bin/herdr-super-agent`: a launcher pinned to the current Node, mod folder and app home.
 - With `--install-skill`, the same communication-policy skill at `~/.pi/agent/skills/super-agent/SKILL.md`, `~/.claude/skills/super-agent/SKILL.md` and `~/.codex/skills/super-agent/SKILL.md`.
 
-Tell the person these effects and get their approval before running:
+**Stop here and ask the person.** List these effects, then ask whether to run setup, and wait for a yes. Telling them is not enough: do not run setup until they agree:
 
 ```bash
 node --no-warnings=ExperimentalWarning ~/.config/herdr-app/mods/super-agent/setup.mjs --install-skill
@@ -66,7 +66,7 @@ The Agents attribution in `NOTICE` and Apache-2.0 license must stay. Tests belon
 
 - Tests cover state transitions, ownership, stale/concurrent delivery, draft fencing, delivery states, notification claiming, reconciliation, and setup rollback.
 - `herdr-app check ~/.config/herdr-app/mods/super-agent` passes and status has no errors.
-- The repository has no `layouts/` directory and its only image is the approved root-level `preview.png`.
+- The repository has no `layouts/` directory; its images are the approved root-level `preview.png` and the README screenshots in `docs/images/`.
 - Setup creates a personal clone while leaving the source layout unchanged.
 - Right-clicking a live Pi, Claude Code or Codex main agent confirms activation, delivers registration directions, and changes its marker from `…` to the Superman-coloured `S` badge after `register`.
 - A disabled recognized session cannot open requests; each supported agent completes ask → reply → follow-up → process exit → explicit resume → lazy rebind → resolve.
