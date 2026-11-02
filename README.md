@@ -60,7 +60,7 @@ A real session: one lead, three repos, a child agent in each.
 Ask your agent in Herdr:
 
 ```text
-Read ~/.config/herdr-app/AGENTS.md, then add this mod: herdr.dev/mods/ergunozyurt/herdr-super-agent
+Read ~/.config/herdr-app/AGENTS.md, then add this mod: https://github.com/ergunozyurt/herdr-super-agent
 ```
 
 Or install by hand from a clone of this repository:
