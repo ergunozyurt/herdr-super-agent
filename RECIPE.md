@@ -1,6 +1,6 @@
 # Super Agent
 
-Super Agent adds a threaded inbox between a person and their main Herdr agents. Requests sit beneath the origin agent, apart from child terminals; selecting one shows its thread in a terminal over the current tab.
+Your main agent stops asking questions in its busy terminal. It opens a request instead: a row under it in the Agents sidebar, with its own thread you answer in a dialog. Child agents report to the main agent; only decisions reach you.
 
 ![Super Agent](preview.png)
 
