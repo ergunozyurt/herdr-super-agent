@@ -41,17 +41,19 @@ node --no-warnings=ExperimentalWarning ~/.config/herdr-app/mods/super-agent/setu
 
 ## Watch out
 
-Node 22.13 or newer is required. V1 supports local agents only. Stable session enablement recognizes Pi, Claude Code and Codex. Claude Code continuity requires explicit resume by session ID; Codex must run in Herdr's `--no-daemon` mode and uses terminal delivery rather than its daemon-only queue command. Provider session IDs are correlation data, not authentication. Herdr does not expose an atomic exact agent-process incarnation. Super Agent fences delivery by terminal address, app, foreground PID and status, but exit/replacement after the final check remains possible. Provider session identity authorizes lazy rebinding only after the prior process is no longer live; it never replaces the delivery fence. `hc send` success means text was submitted, not that the agent understood it.
+Node 22.13 or newer is required. Super Agent is tested with Herdr app 0.1.12; older app versions are not supported. A catalog copy is not complete until `setup.mjs --install-skill` runs: the mod executes Node and Herdr's `hc` command, writes `~/.local/bin/herdr-super-agent`, creates data under the Herdr app home, and installs or updates the Super Agent skill under Pi, Claude Code and Codex. It makes no network requests.
+
+V1 supports local agents only. Stable session enablement recognizes Pi, Claude Code and Codex. Claude Code continuity requires explicit resume by session ID; Codex must run in Herdr's `--no-daemon` mode and uses terminal delivery rather than its daemon-only queue command. Provider session IDs are correlation data, not authentication. Herdr does not expose an atomic exact agent-process incarnation. Super Agent fences delivery by terminal address, app, foreground PID and status, but exit/replacement after the final check remains possible. Provider session identity authorizes lazy rebinding only after the prior process is no longer live; it never replaces the delivery fence. `hc send` success means text was submitted, not that the agent understood it.
 
 Setup intentionally refuses layouts without exactly one shipped `agents` block. It edits only a newly cloned personal layout and switches back/removes the clone on error. Registry installers may rename the mod folder; every path derives from that installed name.
 
-The Agents attribution in `NOTICE` and Apache-2.0 license must stay. Tests belong outside `mods/super-agent/`. The repository intentionally contains no screenshots; adding the catalog's required preview needs the person's explicit approval.
+The Agents attribution in `NOTICE` and Apache-2.0 license must stay. Tests belong outside `mods/super-agent/`. The catalog requires a real root-level `preview.png`; use only a person-approved screenshot scrubbed of private agent names, projects, requests and terminal content.
 
 ## Done when
 
 - Tests cover state transitions, ownership, stale/concurrent delivery, draft fencing, delivery states, notification claiming, reconciliation, and setup rollback.
 - `herdr-app check ~/.config/herdr-app/mods/super-agent` passes and status has no errors.
-- The repository has no `layouts/` directory and no image files.
+- The repository has no `layouts/` directory and its only image is the approved root-level `preview.png`.
 - Setup creates a personal clone while leaving the source layout unchanged.
 - Right-clicking a live Pi, Claude Code or Codex main agent confirms activation, delivers registration directions, and changes its marker from `…` to the Superman-coloured `S` badge after `register`.
 - A disabled recognized session cannot open requests; each supported agent completes ask → reply → follow-up → process exit → explicit resume → lazy rebind → resolve.
