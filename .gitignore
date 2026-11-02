@@ -1,0 +1,8 @@
+node_modules/
+.DS_Store
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+coverage/
+mods/*/gpui-kit.d.ts
+mods/*/jsconfig.json
