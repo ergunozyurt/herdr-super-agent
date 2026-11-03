@@ -44,7 +44,7 @@ A real session: one lead, three repos, a child agent in each.
 - Lets the person explicitly enable or disable Super Agent for one main agent session from that agent's context menu; other agents remain unchanged. Disabling tells the agent first, retires active requests, and rejects later Super Agent commands until re-enabled.
 - Nests requests beneath the main agent that opened them, beside its child terminals, coloured by state: new, waiting for you, waiting for the agent.
 - Raises one toast and Herdr's "blocked" sound for each new request or follow-up, respecting Herdr's sound settings.
-- Opens each request's thread in its own terminal, shown in a dialog over the current tab: native scrollback, a multi-line editor with terminal-style keys, drafts saved as you type. Esc hides it; a successful reply hides the dialog automatically, while **keep** leaves it visible as a tab. The thread stays until the request is resolved.
+- Opens each request's thread in its own terminal, shown in a dialog over the current tab: native scrollback, agent messages rendered as markdown, a multi-line [pi-tui](https://github.com/earendil-works/pi) editor with terminal-style keys and undo, image paste with Ctrl+V (macOS), and drafts saved as you type. Long lines wrap at words without inserting newlines, so copied paragraphs stay whole. Esc hides it; a successful reply hides the dialog automatically, while **keep** leaves it visible as a tab. The thread stays until the request is resolved.
 - Lets either side resolve. The agent is told when you resolve and can reopen the request by following up.
 - Hides requests and ends their thread terminals when the origin process disappears, while preserving messages and drafts; the same resumed enabled session restores them lazily on its next Super Agent command.
 - Delivers replies only to the origin agent's current verified process, never forcing input into a blocked agent or a bare shell.
@@ -52,7 +52,7 @@ A real session: one lead, three repos, a child agent in each.
 ## Requirements
 
 - Herdr app and herdr-core (tested with Herdr app 0.1.12)
-- Node.js 22.13 or newer (for `node:sqlite`)
+- Node.js 22.19 or newer (`node:sqlite`, and pi-tui's minimum)
 - Local agents: Pi, Claude Code or Codex
 
 ## Install
@@ -123,7 +123,8 @@ If you set `HERDR_APP_HOME`, use it in place of `~/.config/herdr-app`. If the ca
 
 ## What it runs and changes on your machine
 
-- **Runs:** Node, and Herdr's `hc` and `herdr-app` commands. It makes no network requests.
+- **Runs:** Node, and Herdr's `hc` and `herdr-app` commands; `osascript` on macOS when you paste an image with Ctrl+V. It makes no network requests.
+- **Attachments:** pasted images are saved as PNG under `~/.config/herdr-app/data/super-agent/attachments/<request>/`.
 - **Layout:** setup writes a new `~/.config/herdr-app/layouts/super-agent-<layout>.json` clone; it never edits the source layout.
 - **Data:** a SQLite database at `~/.config/herdr-app/data/super-agent/inbox.sqlite` holds requests, messages, drafts and enabled sessions.
 - **Launcher:** `~/.local/bin/herdr-super-agent`, pinned to the Node and Herdr app home that ran setup. Setup refuses to overwrite a different file at that path.
@@ -166,10 +167,13 @@ herdr-app check ~/.config/herdr-app/mods/super-agent
 - Include a screenshot for any visible change, with no private agent names, projects or terminal content.
 - Keep `RECIPE.md` in step with any user-visible behaviour change.
 - Tests belong in `test/`, not in `mods/super-agent/`.
+- pi-tui is vendored, not installed. To update it, bump `@earendil-works/pi-tui` in `package.json` (Dependabot opens that PR), run `npm run vendor`, then `npm run check` and a try in Herdr. CI's `npm run vendor:check` fails while `vendor/` and the pin disagree.
 
 ## Repository layout
 
 - `mods/super-agent/` — the complete catalog mod and setup helper
+- `mods/super-agent/vendor/` — vendored pi-tui and its dependencies, with `MANIFEST.json`
+- `scripts/vendor.mjs` — refreshes or checks `vendor/`
 - `test/` — fast protocol/editor/store tests and isolated Herdr terminal tests
 - `RECIPE.md` — the Herdr Mods catalog build brief
 - `preview.png` — the catalog preview image
@@ -179,3 +183,7 @@ herdr-app check ~/.config/herdr-app/mods/super-agent
 ## License
 
 Apache-2.0; see `LICENSE`. The Agents view is derived from Herdr's Apache-2.0 shipped `agents` mod; retain `LICENSE` and `mods/super-agent/NOTICE` in redistributed copies.
+
+## Credits
+
+The reply editor, key handling and markdown rendering come from [pi-tui](https://github.com/earendil-works/pi) by Mario Zechner (MIT), with [marked](https://github.com/markedjs/marked), [marked-cjk-friendly](https://github.com/tats-u/markdown-cjk-friendly) and [get-east-asian-width](https://github.com/sindresorhus/get-east-asian-width) (all MIT). Their licences are kept in `mods/super-agent/vendor/node_modules/`.

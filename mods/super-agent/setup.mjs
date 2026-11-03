@@ -97,7 +97,7 @@ async function main() {
   const skillBackups = new Map();
   try {
     const [major, minor] = process.versions.node.split(".").map(Number);
-    if (major < 22 || (major === 22 && minor < 13)) throw new Error(`Node >=22.13 is required; found ${process.versions.node}.`);
+    if (major < 22 || (major === 22 && minor < 19)) throw new Error(`Node >=22.19 is required; found ${process.versions.node}.`);
     if (!existsSync(cli)) throw new Error(`missing CLI at ${cli}.`);
     preflightLink();
     preflightSkills();
