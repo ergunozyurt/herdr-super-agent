@@ -144,7 +144,7 @@ const slashCommands = {
 /**
  * Runs the thread UI until the request is resolved or gone. Resolves when it has
  * restored the terminal; the caller then closes the store. `terminal` (pi-tui's
- * Terminal: start/stop) and `saveImage` are injectable for tests.
+ * Terminal: start/stop) and `saveImage` are injectable for tests; `signal` stops it.
  */
 export function runThread({
   store,
@@ -159,6 +159,7 @@ export function runThread({
   platform = process.platform,
   pollMs = POLL,
   agentName = null,
+  signal = null,
 }) {
   const ownsTerminal = !terminal;
   hide ??= defaultHide(mod, id, (error) => {
@@ -414,8 +415,8 @@ export function runThread({
   let watcher = null;
   if (dbPath) {
     try {
-      const signal = basename(`${dbPath}.revision`);
-      watcher = watch(dirname(dbPath), (_event, name) => { if (name === signal) refresh(); });
+      const revisionFile = basename(`${dbPath}.revision`);
+      watcher = watch(dirname(dbPath), (_event, name) => { if (name === revisionFile) refresh(); });
     } catch (error) {
       // Polling still picks up new messages, only more slowly.
       status = dim(`Watching for changes failed (${error.message}); checking every ${pollMs / 1000}s.`);
@@ -425,7 +426,8 @@ export function runThread({
   refresh();
   render();
 
-  for (const signal of ["SIGTERM", "SIGHUP", "SIGINT"]) process.once(signal, () => stop());
+  for (const name of ["SIGTERM", "SIGHUP", "SIGINT"]) process.once(name, () => stop());
+  signal?.addEventListener("abort", () => stop(), { once: true });
   return done;
 }
 

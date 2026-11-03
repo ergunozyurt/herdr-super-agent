@@ -2,7 +2,13 @@ name: check
 
 on:
   push:
+    branches: [main]
   pull_request:
+
+# One run per branch or PR: a newer push cancels the older run.
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -10,6 +16,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
