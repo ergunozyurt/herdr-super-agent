@@ -1,0 +1,13 @@
+# pi-tui is vendored into mods/super-agent/vendor/ (see scripts/vendor.mjs). Dependabot
+# bumps the pin in package.json; CI's vendor:check then fails until `npm run vendor`
+# refreshes the copy, so an update is always reviewed and tested before it ships.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

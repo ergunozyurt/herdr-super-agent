@@ -6,9 +6,14 @@
   "scripts": {
     "test": "node test/run-tests.mjs",
     "test:e2e": "node test/run-tests.mjs --e2e",
-    "check": "npm test && node --check mods/super-agent/main.js && node --check mods/super-agent/agents-view.js && node --check mods/super-agent/inbox-client.js && node --check mods/super-agent/thread-bar.js && node --check mods/super-agent/setup.mjs && node --check mods/super-agent/bin/super-agent.mjs && node --check mods/super-agent/lib/core.mjs && node --check mods/super-agent/lib/store.mjs && node --check mods/super-agent/lib/delivery.mjs && node --check mods/super-agent/lib/identity.mjs && node --check mods/super-agent/lib/thread.mjs && node --check mods/super-agent/lib/editor.mjs && node --check mods/super-agent/lib/keys.mjs"
+    "check": "npm test && node --check mods/super-agent/main.js && node --check mods/super-agent/agents-view.js && node --check mods/super-agent/inbox-client.js && node --check mods/super-agent/thread-bar.js && node --check mods/super-agent/setup.mjs && node --check mods/super-agent/bin/super-agent.mjs && node --check mods/super-agent/lib/core.mjs && node --check mods/super-agent/lib/store.mjs && node --check mods/super-agent/lib/delivery.mjs && node --check mods/super-agent/lib/identity.mjs && node --check mods/super-agent/lib/thread.mjs && node --check mods/super-agent/lib/wrap.mjs && node --check mods/super-agent/lib/clipboard.mjs && node --check scripts/vendor.mjs",
+    "vendor": "node scripts/vendor.mjs",
+    "vendor:check": "node scripts/vendor.mjs --check"
   },
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.19"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-tui": "1.5.0"
   }
 }
