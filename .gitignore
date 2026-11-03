@@ -6,3 +6,4 @@ node_modules/
 coverage/
 mods/*/gpui-kit.d.ts
 mods/*/jsconfig.json
+!/mods/super-agent/vendor/node_modules/
