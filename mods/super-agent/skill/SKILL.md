@@ -1,6 +1,6 @@
 ---
 name: super-agent
-description: Required communication policy for a Super Agent-enabled session. Load before asking the user any question, requesting a decision, approval, confirmation, or sign-off, and when handling a [super-agent ...] message.
+description: Required communication policy for a Super Agent-enabled session. Load before asking the user anything (a question, decision, approval, confirmation or sign-off), before ending a turn that leaves something for the user to answer, and when handling a [super-agent ...] message.
 ---
 
 # Super Agent communication policy
