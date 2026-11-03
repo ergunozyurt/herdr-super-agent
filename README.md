@@ -152,6 +152,8 @@ Only enabled top-level agents can open requests. Session registration uses `PI_S
 - Codex is supported as Herdr runs it, with `--no-daemon`; replies go through the terminal, not Codex's daemon-only queue command.
 - Delivered means the reply was submitted to the agent, not that the agent understood it.
 - Setup needs a shown layout with exactly one shipped Agents panel.
+- Image paste (Ctrl+V) works on macOS only for now.
+- A reply's leading spaces are trimmed when it is sent (pi-tui trims submitted text).
 
 ## Contributing
 
@@ -174,7 +176,7 @@ herdr-app check ~/.config/herdr-app/mods/super-agent
 - `mods/super-agent/` — the complete catalog mod and setup helper
 - `mods/super-agent/vendor/` — vendored pi-tui and its dependencies, with `MANIFEST.json`
 - `scripts/vendor.mjs` — refreshes or checks `vendor/`
-- `test/` — fast protocol/editor/store tests and isolated Herdr terminal tests
+- `test/` — fast protocol/thread/store tests and isolated Herdr terminal tests
 - `RECIPE.md` — the Herdr Mods catalog build brief
 - `preview.png` — the catalog preview image
 - `docs/images/` — README screenshots
@@ -186,4 +188,4 @@ Apache-2.0; see `LICENSE`. The Agents view is derived from Herdr's Apache-2.0 sh
 
 ## Credits
 
-The reply editor, key handling and markdown rendering come from [pi-tui](https://github.com/earendil-works/pi) by Mario Zechner (MIT), with [marked](https://github.com/markedjs/marked), [marked-cjk-friendly](https://github.com/tats-u/markdown-cjk-friendly) and [get-east-asian-width](https://github.com/sindresorhus/get-east-asian-width) (all MIT). Their licences are kept in `mods/super-agent/vendor/node_modules/`.
+The reply editor, key handling and markdown rendering come from [pi-tui](https://github.com/earendil-works/pi) by Mario Zechner (MIT), with [marked](https://github.com/markedjs/marked), [marked-cjk-friendly](https://github.com/tats-u/markdown-cjk-friendly) and [get-east-asian-width](https://github.com/sindresorhus/get-east-asian-width) (all MIT; marked also carries the BSD terms of the original Markdown). Their licences are kept in `mods/super-agent/vendor/node_modules/`.

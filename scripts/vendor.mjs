@@ -5,11 +5,12 @@
 //   npm run vendor          refresh vendor/ from the version pinned in package.json
 //   npm run vendor:check    fail if vendor/ does not match that version (CI)
 //
-// Only this maintainer step uses the network. Native prebuilds, source maps and type
-// declarations are left out: the mod reads the clipboard with osascript instead.
+// Only this maintainer step uses the network. Left out: native prebuilds (the mod reads
+// the clipboard with osascript), source maps, type declarations, bin/, man/ and
+// changelogs. pi-tui pins its dependencies exactly, so the copy is reproducible.
 
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -77,14 +78,24 @@ if (process.argv.includes("--check")) {
     });
     if (differ.length) {
       console.error(`vendor/ does not match ${PACKAGE}@${pinned}; run npm run vendor. Differs:\n  ${differ.slice(0, 20).join("\n  ")}`);
-      process.exit(1);
+      process.exitCode = 1;
+    } else {
+      console.log(`vendor/ matches ${PACKAGE}@${pinned}.`);
     }
-    console.log(`vendor/ matches ${PACKAGE}@${pinned}.`);
   } finally {
     rmSync(fresh, { recursive: true, force: true });
   }
 } else {
+  // Build beside vendor/ and swap it in, so a failed download leaves the old copy intact.
+  const next = `${target}.next`;
+  rmSync(next, { recursive: true, force: true });
+  try {
+    build(next);
+  } catch (error) {
+    rmSync(next, { recursive: true, force: true });
+    throw error;
+  }
   rmSync(target, { recursive: true, force: true });
-  build(target);
+  renameSync(next, target);
   console.log(`Vendored ${PACKAGE}@${pinned} into ${relative(root, target)}.`);
 }

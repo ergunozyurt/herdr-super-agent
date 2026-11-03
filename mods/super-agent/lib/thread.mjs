@@ -25,7 +25,7 @@ const crlf = (text) => text.replace(/\r?\n/g, "\r\n");
 
 const DRAFT_DELAY = 300;
 const POLL = 2000;
-// APC markers pi-tui puts around its cursor; we place the hardware cursor there instead.
+// The APC marker pi-tui puts at its cursor; we place the hardware cursor there instead.
 const PI_MARKER = /\x1b_pi:[^\x07]*\x07/g;
 const CURSOR = "\x1b_pi:c\x07";
 
@@ -56,19 +56,15 @@ const MARKDOWN_THEME = {
 // every row to that width, so the padding is trimmed.
 const UNWRAPPED = 10000;
 
-/** Renders an agent's markdown as styled logical lines; falls back to the plain text. */
+/** Renders an agent's markdown as styled logical lines. Throws if pi-tui cannot. */
 export function renderMarkdown(body) {
-  try {
-    return new pi.Markdown(body, 0, 0, MARKDOWN_THEME).render(UNWRAPPED)
-      .map((line) => line.replace(/ +((?:\x1b\[[0-9;]*m)*)$/, "$1"))
-      .join("\n")
-      .replace(/^\n+|\n+$/g, "");
-  } catch {
-    return body;
-  }
+  return new pi.Markdown(body, 0, 0, MARKDOWN_THEME).render(UNWRAPPED)
+    .map((line) => line.replace(/ +((?:\x1b\[[0-9;]*m)*)$/, "$1"))
+    .join("\n")
+    .replace(/^\n+|\n+$/g, "");
 }
 
-// Your messages sit on a shaded block, the agent's are plain text; no per-message header.
+// Your messages sit on a shaded block, the agent's render as markdown; no per-message header.
 const SHADE = "\x1b[48;5;236m";
 const UNSHADE = "\x1b[49m";
 
@@ -77,18 +73,27 @@ const UNSHADE = "\x1b[49m";
 function shaded(text, width) {
   return text.split("\n").map((line) => {
     const row = padWrap(` ${line}`, width);
-    const used = Array.from(row.replace(/\x1b\[[0-9;]*m/g, "")).length;
+    const used = pi.visibleWidth(row);
     return `${SHADE}${row}${used % width ? "\x1b[K" : ""}${UNSHADE}`;
   });
 }
 
 // Bodies print as logical lines, word-wrapped by padding rather than newlines, so copying
-// a wrapped paragraph from the thread gives back one line.
-export function formatMessage(message, width = 100) {
+// a wrapped paragraph from the thread gives back one line. If markdown cannot render, the
+// plain text is shown and `onError` hears why.
+export function formatMessage(message, width = 100, onError = () => {}) {
   const lines = [];
   if (message.body) {
     if (message.author === "human") lines.push(...shaded(`\n${message.body}\n`, width));
-    else lines.push(...renderMarkdown(message.body).split("\n").map((line) => padWrap(line, width)));
+    else {
+      let text = message.body;
+      try {
+        text = renderMarkdown(message.body);
+      } catch (error) {
+        onError(error);
+      }
+      lines.push(...text.split("\n").map((line) => padWrap(line, width)));
+    }
   }
   if (message.kind === "resolve") lines.push(dim("You resolved this request."));
   const note = deliveryNote(message);
@@ -150,11 +155,16 @@ export function runThread({
   output = process.stdout,
   terminal = null,
   saveImage = saveClipboardImage,
-  hide = defaultHide(mod, id),
+  hide = null,
+  platform = process.platform,
   pollMs = POLL,
   agentName = null,
 }) {
   const ownsTerminal = !terminal;
+  hide ??= defaultHide(mod, id, (error) => {
+    status = red(`Couldn't hide the thread: ${error.message}`);
+    render();
+  });
   terminal ??= new pi.ProcessTerminal();
   // The Editor only needs the terminal height and a way to ask for a repaint.
   const host = { terminal: { get rows() { return output.rows || 24; } }, requestRender: () => render() };
@@ -180,6 +190,8 @@ export function runThread({
   let savedDraft = "";
   let finished = false;
   let restoring = false;
+  let pasting = false;
+  let draftFailed = false;
   let finish;
   const done = new Promise((resolve) => { finish = resolve; });
 
@@ -211,7 +223,8 @@ export function runThread({
 
   const render = () => { if (!finished) write(eraseRegion() + regionText()); };
   const print = (text) => write(eraseRegion() + crlf(text) + regionText());
-  const transcript = () => crlf(header + shown.map((message) => formatMessage(message, width())).join(""));
+  const markdownFailed = (error) => { status = red(`Markdown not rendered: ${error.message}`); };
+  const transcript = () => crlf(header + shown.map((message) => formatMessage(message, width(), markdownFailed)).join(""));
 
   function resized() {
     if (finished) return;
@@ -231,9 +244,14 @@ export function runThread({
     try {
       store.setDraft({ id, body });
       savedDraft = body;
+      if (draftFailed) status = "";
+      draftFailed = false;
     } catch (error) {
+      // Kept on screen until a save succeeds, so the person knows the draft is at risk.
+      draftFailed = true;
       status = red(`Draft not saved: ${error.message}`);
     }
+    render();
   }
 
   function stop(reason) {
@@ -266,7 +284,7 @@ export function runThread({
       printed.add(message.id);
       shown.push(message);
     }
-    if (fresh.length) print(fresh.map((message) => formatMessage(message, width())).join(""));
+    if (fresh.length) print(fresh.map((message) => formatMessage(message, width(), markdownFailed)).join(""));
     if (thread.status === "resolved") stop("Resolved.");
   }
 
@@ -320,14 +338,17 @@ export function runThread({
     restoring = false;
   }
 
+  // One paste at a time: the number is chosen before the clipboard is read.
   async function pasteImage() {
+    if (pasting) return;
     if (!images) {
       status = red("Image paste isn't available here.");
       return render();
     }
+    pasting = true;
     try {
       const n = images.next();
-      if (await saveImage(images.path(n))) {
+      if (await saveImage(images.path(n), { platform })) {
         editor.insertTextAtCursor(`[image ${n}]`);
         status = "";
       } else {
@@ -335,19 +356,30 @@ export function runThread({
       }
     } catch (error) {
       status = red(error.message);
+    } finally {
+      pasting = false;
     }
     render();
   }
 
   function onInput(data) {
     if (finished || pi.isKeyRelease(data)) return;
-    if (pi.matchesKey(data, "escape")) {
+    // With suggestions open, Esc closes them and Enter only accepts one (as Tab does), so
+    // "/re" + Enter fills in "/resolve" rather than resolving at once.
+    const suggesting = editor.capturesViewportInput;
+    if (pi.matchesKey(data, "escape") && !suggesting) {
       saveDraft();
       hide();
       return;
     }
+    if (pi.matchesKey(data, "enter") && suggesting) data = "\t";
     if (pi.matchesKey(data, "ctrl+v")) {
       pasteImage();
+      return;
+    }
+    if (pi.matchesKey(data, "ctrl+c")) {
+      restore("");
+      render();
       return;
     }
     editor.handleInput(data);
@@ -356,7 +388,7 @@ export function runThread({
 
   editor.onSubmit = send;
   editor.onChange = () => {
-    if (!restoring) status = "";
+    if (!restoring && !draftFailed) status = "";
     clearTimeout(draftTimer);
     draftTimer = setTimeout(saveDraft, DRAFT_DELAY);
   };
@@ -368,7 +400,8 @@ export function runThread({
     return Promise.resolve();
   }
   const agent = agentName || first.origin_app;
-  const heading = () => `${padWrap(bold(first.title), width())}\n${padWrap(dim(`From ${agent} · Esc hides this · Ctrl+V pastes an image · /resolve resolves it`), width())}\n\n`;
+  const hint = ["From " + agent, "Esc hides this", ...(platform === "darwin" ? ["Ctrl+V pastes an image"] : []), "/resolve resolves it"].join(" · ");
+  const heading = () => `${padWrap(bold(first.title), width())}\n${padWrap(dim(hint), width())}\n\n`;
   header = heading();
   lastWidth = width();
   output.write(crlf(header));
@@ -382,7 +415,10 @@ export function runThread({
     try {
       const signal = basename(`${dbPath}.revision`);
       watcher = watch(dirname(dbPath), (_event, name) => { if (name === signal) refresh(); });
-    } catch {}
+    } catch (error) {
+      // Polling still picks up new messages, only more slowly.
+      status = dim(`Watching for changes failed (${error.message}); checking every ${pollMs / 1000}s.`);
+    }
   }
   const poller = setInterval(refresh, pollMs);
   refresh();
@@ -392,10 +428,10 @@ export function runThread({
   return done;
 }
 
-function defaultHide(mod, id) {
+function defaultHide(mod, id, onError) {
   return () => {
     spawn("herdr-app", ["do", `${mod}.hide-${id}`], { stdio: "ignore", detached: true })
-      .on("error", () => {})
+      .on("error", onError)
       .unref();
   };
 }

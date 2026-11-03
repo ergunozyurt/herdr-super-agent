@@ -4,8 +4,11 @@ Herdr is Copyright its contributors and licensed under the Apache License, Versi
 https://github.com/herdrdev/herdr-app
 
 The thread's reply editor uses pi-tui, vendored in vendor/node_modules with
-its runtime dependencies, unmodified apart from leaving out source maps, type
-declarations and native prebuilds. All are MIT licensed; each package keeps its licence.
+its runtime dependencies. Their code is unmodified; scripts/vendor.mjs leaves out source
+maps, type declarations, native prebuilds, bin/, man/ and changelogs, and adds pi-tui's
+LICENSE from its release tag (the npm package carries none). All are MIT licensed (marked's
+licence also carries the BSD terms of John Gruber's original Markdown); each package keeps
+its licence.
 
 - @earendil-works/pi-tui, Copyright (c) 2025 Mario Zechner
   https://github.com/earendil-works/pi

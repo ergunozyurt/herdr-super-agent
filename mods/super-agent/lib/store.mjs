@@ -1,5 +1,5 @@
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 
@@ -588,7 +588,7 @@ export class InboxStore {
   // Hides requests whose origin agent is gone, keeping their history; resolved requests are
   // deleted once they are older than `keepMs`.
   retireRequests(ids, { now = Date.now(), keepMs = 30 * 86400000 } = {}) {
-    return this.transaction(() => {
+    const result = this.transaction(() => {
       const retire = this.db.prepare(`
         UPDATE requests
         SET status = 'resolved', unread = 0, revision = ?, updated_at = ?, resolved_at = ?
@@ -599,11 +599,18 @@ export class InboxStore {
         if (this.request(id)?.status === "resolved") continue;
         retired += Number(retire.run(this.nextRevision("request-retired", id, now), now, now, id).changes);
       }
+      const expired = this.db.prepare("SELECT id FROM requests WHERE status = 'resolved' AND resolved_at < ?")
+        .all(now - keepMs).map((row) => row.id);
       const removed = Number(this.db.prepare("DELETE FROM requests WHERE status = 'resolved' AND resolved_at < ?")
         .run(now - keepMs).changes);
       if (removed) this.nextRevision("requests-removed", null, now);
-      return { retired, removed };
+      return { retired, removed, expired };
     });
+    // Pasted images go with their request; a failed removal is retried next time.
+    const attachments = join(dirname(this.path), "attachments");
+    for (const id of result.expired) rmSync(join(attachments, id), { recursive: true, force: true });
+    const { expired: _expired, ...counts } = result;
+    return counts;
   }
 
   reconcilePending({ olderThanMs = 60000, now = Date.now() } = {}) {

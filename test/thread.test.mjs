@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { PassThrough } from "node:stream";
 import test from "node:test";
 import { InboxStore } from "../mods/super-agent/lib/store.mjs";
+import { saveClipboardImage } from "../mods/super-agent/lib/clipboard.mjs";
 import { attachments, formatMessage, renderMarkdown, runThread } from "../mods/super-agent/lib/thread.mjs";
 
 const owner = { terminal: "t1", app: "pi", pid: 101 };
@@ -25,7 +26,7 @@ function fakeTerminal() {
   };
 }
 
-function fixture({ failSend = false, saveImage } = {}) {
+function fixture({ failSend = false, saveImage, platform = "darwin", withDb = true } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "super-agent-thread-"));
   const store = new InboxStore(join(dir, "inbox.sqlite"));
   const request = store.createRequest({ origin: owner, title: "Deploy?", body: "Staging or production?", now: 1 });
@@ -44,7 +45,7 @@ function fixture({ failSend = false, saveImage } = {}) {
   output.on("data", (chunk) => { screen += chunk; });
   let hides = 0;
   const dbPath = join(dir, "inbox.sqlite");
-  const done = runThread({ store, core, id: request.id, dbPath, terminal: input, output, saveImage, hide: () => { hides += 1; }, pollMs: 20 });
+  const done = runThread({ store, core, id: request.id, dbPath: withDb ? dbPath : null, terminal: input, output, saveImage, platform, hide: () => { hides += 1; }, pollMs: 20 });
   return {
     store, request, sent, input, output, done, dir, dbPath,
     get screen() { return screen; },
@@ -172,6 +173,10 @@ test("a width change clears the screen and reprints the conversation", async () 
     const after = f.screen.slice(f.screen.lastIndexOf("\x1b[2J\x1b[3J\x1b[H"));
     assert.match(after, /Deploy\?/);
     assert.match(after, /Staging or production\?/);
+    // The hint is re-wrapped for 40 columns: its first row is padded to exactly 40.
+    const hint = stripAnsi(after).split("\r\n")[1];
+    assert.ok(hint.length > 40);
+    assert.match(hint.slice(0, 40), /\s$/);
     f.store.resolveAgent({ id: f.request.id, origin: owner });
     await f.done;
   } finally {
@@ -207,6 +212,144 @@ test("Ctrl+V with no image says so and leaves the draft alone", async () => {
     assert.match(f.sent[0], /\ndraft$/);
     f.store.resolveAgent({ id: f.request.id, origin: owner });
     await f.done;
+  } finally {
+    f.close();
+  }
+});
+
+const end = async (f) => {
+  f.store.resolveAgent({ id: f.request.id, origin: owner });
+  await f.done;
+};
+
+test("a second Ctrl+V while one is saving is ignored, so numbers never repeat", async () => {
+  let release;
+  const f = fixture({ saveImage: (path) => new Promise((resolve) => { release = () => { writeFileSync(path, "png"); resolve(true); }; }) });
+  try {
+    f.input.keys("\x16", "\x16");
+    release();
+    await tick(10);
+    f.input.keys("\x16");
+    release();
+    await tick(10);
+    f.input.keys("\r");
+    await tick(10);
+    assert.match(f.sent[0], /\[image 1: .*1\.png\]\[image 2: .*2\.png\]$/);
+    await end(f);
+  } finally {
+    f.close();
+  }
+});
+
+test("Enter on a /resolve suggestion only fills it in", async () => {
+  const f = fixture();
+  try {
+    f.input.keys("/re");
+    await tick(20);
+    f.input.keys("\r");
+    await tick(20);
+    assert.equal(f.sent.length, 0);
+    assert.notEqual(f.store.request(f.request.id).status, "resolved");
+    f.input.keys("\r");
+    await tick(20);
+    assert.match(f.sent[0] ?? "", /^\[super-agent resolved request=/);
+    await f.done;
+  } finally {
+    f.close();
+  }
+});
+
+test("Esc closes suggestions before it hides the thread", async () => {
+  const f = fixture();
+  try {
+    f.input.keys("/");
+    await tick(20);
+    f.input.keys("\x1b");
+    await tick(5);
+    assert.equal(f.hides, 0);
+    f.input.keys("\x1b");
+    await tick(5);
+    assert.equal(f.hides, 1);
+    await end(f);
+  } finally {
+    f.close();
+  }
+});
+
+test("Ctrl+C clears the reply", async () => {
+  const f = fixture();
+  try {
+    f.input.keys("oops", "\x03", "fine", "\r");
+    await tick(10);
+    assert.match(f.sent[0], /\nfine$/);
+    await end(f);
+  } finally {
+    f.close();
+  }
+});
+
+test("a failed send keeps the [image N] marker, not the expanded path", async () => {
+  const f = fixture({ failSend: true, saveImage: async (path) => { writeFileSync(path, "png"); return true; } });
+  try {
+    f.input.keys("see ", "\x16");
+    await tick(10);
+    f.input.keys("\r");
+    await tick(10);
+    assert.equal(f.store.getDraft(f.request.id).body, "see [image 1]");
+    await end(f);
+  } finally {
+    f.close();
+  }
+});
+
+test("Ctrl+V reports clipboard errors and unavailable paste", async () => {
+  const failing = fixture({ saveImage: async () => { throw new Error("Image paste is only available on macOS for now."); } });
+  try {
+    failing.input.keys("\x16");
+    await tick(10);
+    assert.match(stripAnsi(failing.screen), /only available on macOS/);
+    await end(failing);
+  } finally {
+    failing.close();
+  }
+  const noStore = fixture({ withDb: false });
+  try {
+    noStore.input.keys("\x16");
+    await tick(10);
+    assert.match(stripAnsi(noStore.screen), /Image paste isn't available here\./);
+    await end(noStore);
+  } finally {
+    noStore.close();
+  }
+  await assert.rejects(saveClipboardImage("/tmp/x.png", { platform: "linux" }), /only available on macOS/);
+});
+
+test("the Ctrl+V hint shows only where image paste works", async () => {
+  const f = fixture({ platform: "linux" });
+  try {
+    assert.doesNotMatch(stripAnsi(f.screen), /Ctrl\+V/);
+    await end(f);
+  } finally {
+    f.close();
+  }
+});
+
+test("a failed draft save stays on screen until a save succeeds", async () => {
+  const f = fixture();
+  const setDraft = f.store.setDraft.bind(f.store);
+  try {
+    f.store.setDraft = () => { throw new Error("database is locked"); };
+    f.input.keys("x");
+    await tick(400);
+    assert.match(stripAnsi(f.screen), /Draft not saved: database is locked/);
+    const before = f.screen.length;
+    f.input.keys("y");
+    await tick(5);
+    assert.match(stripAnsi(f.screen.slice(before)), /Draft not saved/);
+    f.store.setDraft = setDraft;
+    await tick(400);
+    assert.equal(f.store.getDraft(f.request.id).body, "xy");
+    await end(f);
   } finally {
     f.close();
   }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import { ConflictError, InboxStore } from "../mods/super-agent/lib/store.mjs";
@@ -229,8 +229,12 @@ test("retiring hides requests but keeps history until it is old", () => {
     const kept = f.store.thread(created.id);
     assert.equal(kept.status, "resolved");
     assert.equal(kept.messages.length, 1);
+    const images = join(dirname(f.store.path), "attachments", created.id);
+    mkdirSync(images, { recursive: true });
+    writeFileSync(join(images, "1.png"), "png");
     assert.deepEqual(f.store.retireRequests([], { now: 200, keepMs: 100 }), { retired: 0, removed: 1 });
     assert.equal(f.store.thread(created.id), null);
+    assert.equal(existsSync(images), false);
   } finally {
     f.close();
   }
