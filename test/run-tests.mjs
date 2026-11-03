@@ -14,6 +14,7 @@ const e2e = process.argv.includes("--e2e");
 const result = spawnSync(process.execPath, [
   "--no-warnings=ExperimentalWarning",
   "--test",
+  "--test-timeout=120000", // a hung test fails instead of stalling CI
   ...testFiles(resolve("test")),
 ], {
   env: { ...process.env, ...(e2e ? { SUPER_AGENT_E2E: "1" } : {}) },
