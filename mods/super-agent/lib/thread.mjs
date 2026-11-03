@@ -364,9 +364,10 @@ export function runThread({
 
   function onInput(data) {
     if (finished || pi.isKeyRelease(data)) return;
-    // With suggestions open, Esc closes them and Enter only accepts one (as Tab does), so
-    // "/re" + Enter fills in "/resolve" rather than resolving at once.
-    const suggesting = editor.capturesViewportInput;
+    // With suggestions open, Esc closes them and Enter on a partial command only accepts
+    // the suggestion (as Tab does), so "/re" + Enter fills in "/resolve" rather than
+    // resolving at once. A fully typed "/resolve" + Enter still resolves.
+    const suggesting = editor.capturesViewportInput && value().trim() !== "/resolve";
     if (pi.matchesKey(data, "escape") && !suggesting) {
       saveDraft();
       hide();

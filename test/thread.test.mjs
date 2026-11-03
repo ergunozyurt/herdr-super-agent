@@ -354,3 +354,16 @@ test("a failed draft save stays on screen until a save succeeds", async () => {
     f.close();
   }
 });
+
+test("a fully typed /resolve + Enter resolves even with its suggestion showing", async () => {
+  const f = fixture();
+  try {
+    f.input.keys("/resolve");
+    await tick(20);
+    f.input.keys("\r");
+    await Promise.race([f.done, tick(500).then(() => assert.fail("thread did not end on /resolve"))]);
+    assert.equal(f.store.request(f.request.id).status, "resolved");
+  } finally {
+    f.close();
+  }
+});
