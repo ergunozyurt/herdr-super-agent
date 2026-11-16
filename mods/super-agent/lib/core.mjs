@@ -20,6 +20,12 @@ function stderrMessage(stderr) {
   }
 }
 
+// Herdr Core holds a send while the person has an unsent draft in the target's prompt, up to
+// 60 s after their last key (core's default `draft_wait`), else ~3 s of quiet. A caller that
+// gives up first cancels the send, so allow well beyond that (the wait can run longer, and
+// draft_wait is the person's setting).
+export const SEND_TIMEOUT = 150_000;
+
 export class CoreClient {
   constructor({ executable = process.env.SUPER_AGENT_HC ?? "hc", timeout = 5_000 } = {}) {
     this.executable = executable;
@@ -117,7 +123,7 @@ export class CoreClient {
     return info;
   }
 
-  send(origin, text, { timeout = 15_000 } = {}) {
+  send(origin, text, { timeout = SEND_TIMEOUT } = {}) {
     const info = this.validateDelivery(origin);
     const state = info.status.state;
     const args = state === "idle" || state === "working"
@@ -126,7 +132,16 @@ export class CoreClient {
         ? ["send", origin.terminal, text]
         : null;
     if (!args) throw new CoreError(`The originating agent is ${state}; delivery was refused.`, { code: "origin_unavailable" });
-    const result = this.run(args, { timeout });
+    let result;
+    try {
+      result = this.run(args, { timeout });
+    } catch (error) {
+      if (error.code !== "timeout") throw error;
+      throw new CoreError(
+        "Herdr Core kept the message waiting for unsent text in the agent's prompt. Send or clear it, then try again.",
+        { code: "timeout" },
+      );
+    }
     if (result.code !== 0) {
       throw new CoreError(stderrMessage(result.stderr) || "Herdr Core refused the message.", {
         code: "send_failed",

@@ -74,18 +74,15 @@ export class AgentsController {
   init(_props, cx) {
     this.options = props() ?? {};
     this.client = new InboxClient(this.options);
-    if (this.options.sortMenu || this.options.agentMenu || this.options.enableConfirm || this.options.disableConfirm) {
-      this.enabling = false;
-      this.disabling = false;
-      this.error = null;
-      return;
-    }
+    if (this.options.sortMenu || this.options.agentMenu || this.options.enableConfirm || this.options.disableConfirm) return;
     this.inbox = { revision: 0, requests: [], sessions: [], pendingEnablements: [] };
     this.folded = new Set();
     this.missingSince = new Map();
     // Request id → overlay id, for thread terminals this copy is showing.
     this.shownThreads = new Map();
     this.openingThreads = new Set();
+    // Terminals whose enable or disable is still being delivered.
+    this.toggling = new Set();
     this.startedAt = Date.now();
     // Each agent's last state and when it changed (ms), kept across restarts.
     this.changed = JSON.parse(localStorage.getItem("changed") ?? "{}");
@@ -105,6 +102,13 @@ export class AgentsController {
           this.hideThread(command.slice(5));
           continue;
         }
+        // From the enable and disable dialogs, which close at once: Herdr Core may hold the
+        // message for up to a minute while the agent's prompt has unsent text.
+        if (command.startsWith("enable-") || command.startsWith("disable-")) {
+          const [action, ...rest] = command.split("-");
+          cx.spawn(async (cx) => this.toggle(action, rest.join("-"), cx));
+          continue;
+        }
         // A toast's action.
         if (!command.startsWith("open-")) continue;
         const id = command.slice(5);
@@ -118,6 +122,24 @@ export class AgentsController {
       cx.spawn(async (cx) => this.prune(cx));
       cx.notify();
     });
+  }
+
+  async toggle(action, terminal, cx) {
+    if (this.toggling.has(terminal)) return;
+    this.toggling.add(terminal);
+    cx.notify();
+    try {
+      await (action === "enable" ? this.client.enable(terminal) : this.client.disable(terminal));
+    } catch (error) {
+      notify({
+        title: action === "enable" ? "Super Agent was not enabled" : "Super Agent was not disabled",
+        body: error.message,
+        level: "error",
+      });
+    } finally {
+      this.toggling.delete(terminal);
+      await this.refresh(cx, false);
+    }
   }
 
   async refresh(cx, alerts) {
@@ -452,25 +474,12 @@ export class AgentsController {
       .text_size(13)
       .child(div().text_size(17).font_semibold().text_color(t.foreground).child(`Enable Super Agent for ${target.name}?`))
       .child(div().text_color(t.muted).child("Super Agent will tell this agent how to open requests. While it is enabled, answer its questions in request threads instead of typing into its terminal."))
-      .when(Boolean(this.error), (el) => el.child(div().p(8).rounded(7).bg(t.blocked + "18").text_color(t.blocked).child(this.error)))
       .child(div().flex_1())
       .child(h_flex().justify_end().gap(8)
         .child(button("super-agent-enable-cancel", "Cancel", false, () => closeOverlay(overlay)))
-        .child(button("super-agent-enable-confirm", this.enabling ? "Enabling…" : "Enable", true, (_event, buttonCx) => {
-          if (this.enabling) return;
-          this.enabling = true;
-          this.error = null;
-          buttonCx.notify();
-          buttonCx.spawn(async (buttonCx) => {
-            try {
-              await this.client.enable(target.terminal);
-              closeOverlay(overlay);
-            } catch (error) {
-              this.error = error.message;
-              this.enabling = false;
-              buttonCx.notify();
-            }
-          });
+        .child(button("super-agent-enable-confirm", "Enable", true, () => {
+          closeOverlay(overlay);
+          run(`${this.options.mod}.enable-${target.terminal}`);
         })));
   }
 
@@ -499,25 +508,12 @@ export class AgentsController {
       .text_size(13)
       .child(div().text_size(17).font_semibold().text_color(t.foreground).child(`Disable Super Agent for ${target.name}?`))
       .child(div().text_color(t.muted).child("The agent is told to stop using Super Agent first. Its active requests are retired and hidden, and every later Super Agent command is rejected until you enable this session again."))
-      .when(Boolean(this.error), (el) => el.child(div().p(8).rounded(7).bg(t.blocked + "18").text_color(t.blocked).child(this.error)))
       .child(div().flex_1())
       .child(h_flex().justify_end().gap(8)
         .child(button("super-agent-disable-cancel", "Cancel", false, () => closeOverlay(overlay)))
-        .child(button("super-agent-disable-confirm", this.disabling ? "Disabling…" : "Disable", true, (_event, buttonCx) => {
-          if (this.disabling) return;
-          this.disabling = true;
-          this.error = null;
-          buttonCx.notify();
-          buttonCx.spawn(async (buttonCx) => {
-            try {
-              await this.client.disable(target.terminal);
-              closeOverlay(overlay);
-            } catch (error) {
-              this.error = error.message;
-              this.disabling = false;
-              buttonCx.notify();
-            }
-          });
+        .child(button("super-agent-disable-confirm", "Disable", true, () => {
+          closeOverlay(overlay);
+          run(`${this.options.mod}.disable-${target.terminal}`);
         })));
   }
 

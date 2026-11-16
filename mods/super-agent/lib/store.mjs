@@ -613,7 +613,9 @@ export class InboxStore {
     return counts;
   }
 
-  reconcilePending({ olderThanMs = 60000, now = Date.now() } = {}) {
+  // Longer than any send may run (lib/core.mjs SEND_TIMEOUT), so a send still waiting for Herdr
+  // Core is never finalized under it.
+  reconcilePending({ olderThanMs = 180_000, now = Date.now() } = {}) {
     const candidates = this.db.prepare(`
       SELECT id FROM messages
       WHERE delivery_status = 'pending' AND created_at <= ?

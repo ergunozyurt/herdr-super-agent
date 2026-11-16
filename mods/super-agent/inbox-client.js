@@ -1,5 +1,9 @@
 import { appHome, exec, watchFolder } from "herdr";
 
+// For commands that send to an agent: exec stops a program after 30 s by default, but Herdr
+// Core may hold a send for a minute; stay above lib/core.mjs SEND_TIMEOUT (150 s).
+const SEND_EXEC_TIMEOUT = 170_000;
+
 function parse(result) {
   let payload;
   try {
@@ -24,8 +28,8 @@ export class InboxClient {
     this.data = `${appHome()}/data/${this.mod}`;
   }
 
-  async run(args) {
-    return parse(await exec(this.node, ["--no-warnings=ExperimentalWarning", this.cli, ...args]));
+  async run(args, options = {}) {
+    return parse(await exec(this.node, ["--no-warnings=ExperimentalWarning", this.cli, ...args], options));
   }
 
   snapshot() {
@@ -33,11 +37,11 @@ export class InboxClient {
   }
 
   enable(terminal) {
-    return this.run(["enable", terminal]);
+    return this.run(["enable", terminal], { timeout: SEND_EXEC_TIMEOUT });
   }
 
   disable(terminal) {
-    return this.run(["disable", terminal]);
+    return this.run(["disable", terminal], { timeout: SEND_EXEC_TIMEOUT });
   }
 
   read(request) {
@@ -45,7 +49,7 @@ export class InboxClient {
   }
 
   suggestResolve(id) {
-    return this.run(["suggest-resolve", id]);
+    return this.run(["suggest-resolve", id], { timeout: SEND_EXEC_TIMEOUT });
   }
 
   claimNotifications(openRequest) {
