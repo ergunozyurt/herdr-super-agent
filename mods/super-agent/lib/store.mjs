@@ -1,7 +1,13 @@
+import { SEND_TIMEOUT } from "./core.mjs";
 import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
+
+// A pending delivery older than this is finalized as unknown. It outlasts a whole send
+// (SEND_TIMEOUT for hc send and its retries, plus the `hc get` checks before each attempt),
+// so a send Herdr Core is still holding is never finalized under it.
+export const RECONCILE_AFTER = SEND_TIMEOUT + 90_000;
 
 const ACTIVE = new Set(["unread", "waiting-human", "waiting-agent"]);
 const DELIVERY = new Set(["pending", "submitted", "failed", "unknown"]);
@@ -613,7 +619,7 @@ export class InboxStore {
     return counts;
   }
 
-  reconcilePending({ olderThanMs = 60000, now = Date.now() } = {}) {
+  reconcilePending({ olderThanMs = RECONCILE_AFTER, now = Date.now() } = {}) {
     const candidates = this.db.prepare(`
       SELECT id FROM messages
       WHERE delivery_status = 'pending' AND created_at <= ?

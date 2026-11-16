@@ -304,7 +304,7 @@ export function runThread({
       status = red(error.message);
       return render();
     }
-    status = dim("Sending…");
+    status = dim("Sending… (Herdr Core waits while the agent's prompt has unsent text)");
     render();
     // Let the frame reach the terminal before the synchronous send blocks.
     setImmediate(() => {

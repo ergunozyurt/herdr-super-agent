@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
@@ -387,6 +387,7 @@ test("blocked agents refuse delivery without force", () => {
     ], { FAKE_HC_GET: JSON.stringify(blocked) });
     assert.equal(reply.status, 2);
     assert.equal(reply.json.error.code, "origin_blocked");
+    assert.equal(existsSync(f.log), false);
   } finally {
     f.close();
   }
@@ -429,6 +430,36 @@ test("delivery is refused after agent pid changes", () => {
     const after = f.run(["snapshot"]);
     assert.equal(after.json.requests[0].status, "unread");
     assert.equal(after.json.requests[0].messages.length, 1);
+  } finally {
+    f.close();
+  }
+});
+
+test("enabling a working agent sends the activation fenced on its current state", () => {
+  const f = fixture({ app: "pi" });
+  try {
+    const working = JSON.parse(f.env.FAKE_HC_GET);
+    working.status.state = "working";
+    const enabled = f.run(["enable", "t1"], { FAKE_HC_GET: JSON.stringify(working) });
+    assert.equal(enabled.status, 0, enabled.stderr);
+    assert.equal(enabled.json.pending, true);
+    const sent = JSON.parse(readFileSync(f.log, "utf8").trim());
+    assert.deepEqual(sent.slice(0, 4), ["send", "--if", "working", "t1"]);
+    assert.match(sent[4], /^\[super-agent activation\]/);
+  } finally {
+    f.close();
+  }
+});
+
+test("enabling a blocked agent types nothing and leaves nothing pending", () => {
+  const f = fixture({ app: "pi" });
+  try {
+    const blocked = JSON.parse(f.env.FAKE_HC_GET);
+    blocked.status.state = "blocked";
+    const enabled = f.run(["enable", "t1"], { FAKE_HC_GET: JSON.stringify(blocked) });
+    assert.equal(enabled.json.error.code, "origin_blocked");
+    assert.equal(existsSync(f.log), false);
+    assert.deepEqual(f.run(["snapshot"]).json.pendingEnablements, []);
   } finally {
     f.close();
   }

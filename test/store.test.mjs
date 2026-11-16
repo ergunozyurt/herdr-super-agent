@@ -3,7 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
-import { ConflictError, InboxStore } from "../mods/super-agent/lib/store.mjs";
+import { ConflictError, InboxStore, RECONCILE_AFTER } from "../mods/super-agent/lib/store.mjs";
+import { SEND_TIMEOUT } from "../mods/super-agent/lib/core.mjs";
 
 const owner = { terminal: "t1", app: "pi", pid: 101 };
 
@@ -260,6 +261,47 @@ test("a human resolve that fails to reach the agent leaves the request open", ()
     const pending = f.store.beginHumanDelivery({ id: created.id, kind: "resolve", expectedRevision: null, now: 2 });
     const failed = f.store.finishHumanDelivery({ messageId: pending.message.id, status: "failed", now: 3 });
     assert.equal(failed.request.status, "unread");
+  } finally {
+    f.close();
+  }
+});
+
+test("a reply Herdr Core is still holding is not reconciled under its send", () => {
+  const f = fixture();
+  try {
+    const created = f.store.createRequest({ origin: owner, title: "Question", body: "Need input", now: 1 });
+    const pending = f.store.beginHumanDelivery({
+      id: created.id,
+      kind: "message",
+      body: "Yes",
+      expectedRevision: created.revision,
+      now: 2,
+    });
+    // Another CLI run while the send is still waiting for the person's draft.
+    assert.equal(f.store.reconcilePending({ now: 2 + SEND_TIMEOUT }), 0);
+    const done = f.store.finishHumanDelivery({ messageId: pending.message.id, status: "submitted", now: 3 + SEND_TIMEOUT });
+    assert.equal(done.message.delivery_status, "submitted");
+  } finally {
+    f.close();
+  }
+});
+
+test("a delivery whose sender died is reconciled as unknown", () => {
+  const f = fixture();
+  try {
+    const created = f.store.createRequest({ origin: owner, title: "Question", body: "Need input", now: 1 });
+    const pending = f.store.beginHumanDelivery({
+      id: created.id,
+      kind: "message",
+      body: "Yes",
+      expectedRevision: created.revision,
+      now: 2,
+    });
+    assert.equal(f.store.reconcilePending({ now: 2 + RECONCILE_AFTER }), 1);
+    assert.throws(
+      () => f.store.finishHumanDelivery({ messageId: pending.message.id, status: "submitted", now: 3 + RECONCILE_AFTER }),
+      ConflictError,
+    );
   } finally {
     f.close();
   }
