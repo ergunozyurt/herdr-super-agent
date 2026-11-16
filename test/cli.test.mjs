@@ -292,9 +292,9 @@ test("agent creates a request and human reply is submitted with IDs", () => {
     assert.equal(reply.json.request.status, "waiting-agent");
 
     const sent = JSON.parse(readFileSync(f.log, "utf8").trim());
-    assert.deepEqual(sent.slice(0, 4), ["send", "--if", "idle", "t1"]);
-    assert.match(sent[4], new RegExp(`request=${request.id} message=msg_`));
-    assert.match(sent[4], /\nStaging$/);
+    assert.deepEqual(sent.slice(0, 2), ["send", "t1"]);
+    assert.match(sent[2], new RegExp(`request=${request.id} message=msg_`));
+    assert.match(sent[2], /\nStaging$/);
   } finally {
     f.close();
   }
@@ -401,8 +401,8 @@ test("suggest-resolve resolves the request and tells the agent how to reopen it"
     assert.equal(suggested.json.delivery, "submitted");
     assert.equal(suggested.json.request.status, "resolved");
     const sent = JSON.parse(readFileSync(f.log, "utf8").trim());
-    assert.match(sent[4], new RegExp(`^\\[super-agent resolved request=${ask.json.request} message=msg_`));
-    assert.match(sent[4], new RegExp(`herdr-super-agent append ${ask.json.request}`));
+    assert.match(sent[2], new RegExp(`^\\[super-agent resolved request=${ask.json.request} message=msg_`));
+    assert.match(sent[2], new RegExp(`herdr-super-agent append ${ask.json.request}`));
   } finally {
     f.close();
   }

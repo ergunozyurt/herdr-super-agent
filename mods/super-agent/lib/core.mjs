@@ -126,11 +126,11 @@ export class CoreClient {
   send(origin, text, { timeout = SEND_TIMEOUT } = {}) {
     const info = this.validateDelivery(origin);
     const state = info.status.state;
-    const args = state === "idle" || state === "working"
-      ? ["send", "--if", state, origin.terminal, text]
-      : state === "done"
-        ? ["send", origin.terminal, text]
-        : null;
+    // No `--if`: Herdr Core checks it only after its quiet wait (~3 s, longer for a draft), by
+    // when idle and working may have swapped harmlessly. A plain send still refuses a blocked agent.
+    const args = state === "idle" || state === "working" || state === "done"
+      ? ["send", origin.terminal, text]
+      : null;
     if (!args) throw new CoreError(`The originating agent is ${state}; delivery was refused.`, { code: "origin_unavailable" });
     let result;
     try {

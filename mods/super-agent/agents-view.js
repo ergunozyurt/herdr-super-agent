@@ -209,16 +209,21 @@ export class AgentsController {
   }
 
   requestAvailable(request, listed = null) {
+    return this.bindingLive({ terminal: request.origin_terminal, app: request.origin_app, pid: request.origin_pid }, listed);
+  }
+
+  // Whether `terminal` still runs the agent process recorded as {app, pid}.
+  bindingLive({ terminal: address, app, pid }, listed = null) {
     const byAddress = listed ?? new Map(terminals().map((terminal) => [terminal.address, terminal]));
-    const terminal = byAddress.get(request.origin_terminal);
+    const terminal = byAddress.get(address);
     const currentApp = terminal?.report?.app ?? terminal?.app ?? terminal?.program?.key ?? null;
     const currentPid = terminal?.foreground?.pid ?? null;
     return Boolean(
       terminal &&
       terminal.state === "live" &&
       terminal.status &&
-      currentApp === request.origin_app &&
-      currentPid === request.origin_pid
+      currentApp === app &&
+      currentPid === pid
     );
   }
 
@@ -620,10 +625,13 @@ export class AgentsController {
     const activeRequests = this.inbox.requests.filter(
       (request) => request.status !== "resolved" && this.requestAvailable(request, listedTerminals),
     );
+    // Only while the bound process still runs there: a new agent in the same terminal is
+    // another session, and the CLI would refuse to disable it.
+    const bound = (binding) => this.bindingLive(binding, listedTerminals);
     const enabledTerminals = new Set(
-      (this.inbox.sessions ?? []).filter((session) => session.enabled).map((session) => session.terminal),
+      (this.inbox.sessions ?? []).filter((session) => session.enabled && bound(session)).map((session) => session.terminal),
     );
-    const pendingTerminals = new Set((this.inbox.pendingEnablements ?? []).map((pending) => pending.terminal));
+    const pendingTerminals = new Set((this.inbox.pendingEnablements ?? []).filter(bound).map((pending) => pending.terminal));
     const requestsByOrigin = new Map();
     for (const request of activeRequests) {
       const mine = requestsByOrigin.get(request.origin_terminal) ?? [];
