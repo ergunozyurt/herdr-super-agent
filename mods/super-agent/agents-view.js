@@ -81,8 +81,8 @@ export class AgentsController {
     // Request id → overlay id, for thread terminals this copy is showing.
     this.shownThreads = new Map();
     this.openingThreads = new Set();
-    // Terminals whose enable or disable is still being delivered.
-    this.toggling = new Set();
+    // Terminal → "enable" or "disable", while that command runs (the agent menu shows it).
+    this.toggling = new Map();
     this.startedAt = Date.now();
     // Each agent's last state and when it changed (ms), kept across restarts.
     this.changed = JSON.parse(localStorage.getItem("changed") ?? "{}");
@@ -126,13 +126,15 @@ export class AgentsController {
 
   async toggle(action, terminal, cx) {
     if (this.toggling.has(terminal)) return;
-    this.toggling.add(terminal);
+    this.toggling.set(terminal, action);
     cx.notify();
     try {
       await (action === "enable" ? this.client.enable(terminal) : this.client.disable(terminal));
     } catch (error) {
+      const agent = agents().find((item) => item.address === terminal);
+      const name = agent?.space_name || agent?.tab_name || agent?.program?.name || terminal;
       notify({
-        title: action === "enable" ? "Super Agent was not enabled" : "Super Agent was not disabled",
+        title: `Super Agent was not ${action}d for ${name}`,
         body: error.message,
         level: "error",
       });
@@ -409,7 +411,9 @@ export class AgentsController {
     const item = this.options.agentMenu;
     const label = !item.supported
       ? "Super Agent unavailable"
-      : item.enabled
+      : item.busy
+        ? `${item.busy === "enable" ? "Enabling" : "Disabling"}: waiting for the agent…`
+        : item.enabled
         ? "Disable Super Agent"
         : item.pending
           ? "Send instructions again"
@@ -421,8 +425,8 @@ export class AgentsController {
       .gap(9)
       .items_center()
       .bg(t.popover)
-      .text_color(!item.supported ? t.muted : t.foreground)
-      .when(item.supported, (el) => el
+      .text_color(!item.supported || item.busy ? t.muted : t.foreground)
+      .when(item.supported && !item.busy, (el) => el
         .cursor_pointer()
         .hover((s) => s.bg(t.hover))
         .on_click(() => {
@@ -786,6 +790,7 @@ export class AgentsController {
                 supported: ["pi", "claude-code", "codex"].includes(agentApp),
                 enabled: enabledTerminals.has(a.address),
                 pending: pendingTerminals.has(a.address),
+                busy: this.toggling.get(a.address) ?? null,
               },
             },
           });

@@ -128,7 +128,8 @@ async function main() {
           "After a reply, act on it. Append only when the user needs a substantive follow-up or you need more input; otherwise resolve.",
         ].join("\n"));
       } catch (error) {
-        store.cancelEnablement(origin);
+        // A timed-out activation may still arrive; keep it pending so the agent can register.
+        if (error.code !== "timeout") store.cancelEnablement(origin);
         throw error;
       }
       print({ terminal: origin.terminal, pending: true });
@@ -140,14 +141,22 @@ async function main() {
       if (!store.enabledSessionForBinding(origin)) {
         throw new ConflictError("Super Agent is already disabled for this session.", "super_agent_disabled");
       }
-      core.send(origin, [
-        "[super-agent disabled]",
-        "The user disabled Super Agent for this session.",
-        "Stop using Super Agent commands unless the user enables it again.",
-        "Active requests were retired. Use the agent terminal for user-directed questions again.",
-      ].join("\n"));
+      let notice = "submitted";
+      try {
+        core.send(origin, [
+          "[super-agent disabled]",
+          "The user disabled Super Agent for this session.",
+          "Stop using Super Agent commands unless the user enables it again.",
+          "Active requests were retired. Use the agent terminal for user-directed questions again.",
+        ].join("\n"));
+      } catch (error) {
+        // The notice may still arrive, and the person asked to disable: do it. Later Super Agent
+        // commands from the agent are refused with the same instruction.
+        if (error.code !== "timeout") throw error;
+        notice = "unknown";
+      }
       const disabled = store.disableSession({ origin });
-      print({ disabled: true, retired: disabled.retired, session: disabled.sessionId, agent: disabled.agentKind });
+      print({ disabled: true, notice, retired: disabled.retired, session: disabled.sessionId, agent: disabled.agentKind });
       return;
     }
 

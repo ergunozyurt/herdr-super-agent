@@ -1,8 +1,9 @@
 import { appHome, exec, watchFolder } from "herdr";
 
-// For commands that send to an agent: exec stops a program after 30 s by default, but Herdr
-// Core may hold a send for a minute; stay above lib/core.mjs SEND_TIMEOUT (150 s).
-const SEND_EXEC_TIMEOUT = 170_000;
+// For commands that send to an agent. exec stops a program after 30 s by default, but the CLI
+// can block for minutes while Herdr Core holds the message behind unsent text in the agent's
+// prompt. Keep it above lib/core.mjs SEND_TIMEOUT (150 s) plus the CLI's own checks.
+const SEND_EXEC_TIMEOUT = 200_000;
 
 function parse(result) {
   let payload;
@@ -10,6 +11,10 @@ function parse(result) {
     payload = JSON.parse(result.stdout || "{}");
   } catch {
     throw new Error(result.stderr.trim() || "Super Agent returned invalid data.");
+  }
+  // exec stopped it (or it crashed) before it printed anything.
+  if (result.code !== 0 && !result.stdout.trim() && !result.stderr.trim()) {
+    throw new Error("Super Agent did not finish in time; the agent may still receive the message. Check its terminal.");
   }
   if (result.code !== 0 || payload.error) {
     const error = new Error(payload.error?.message || result.stderr.trim() || `Super Agent exited with ${result.code}.`);

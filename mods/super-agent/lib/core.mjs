@@ -10,7 +10,16 @@ export class CoreError extends Error {
   }
 }
 
-// hc reports errors as JSON on stderr; keep only the human-readable message.
+// hc reports errors as JSON on stderr: {"error":{"kind","message"}}.
+function stderrError(stderr) {
+  try {
+    return JSON.parse(stderr.trim()).error ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Keep only the human-readable message.
 function stderrMessage(stderr) {
   const text = stderr.trim();
   try {
@@ -20,10 +29,10 @@ function stderrMessage(stderr) {
   }
 }
 
-// Herdr Core holds a send while the person has an unsent draft in the target's prompt, up to
-// 60 s after their last key (core's default `draft_wait`), else ~3 s of quiet. A caller that
-// gives up first cancels the send, so allow well beyond that (the wait can run longer, and
-// draft_wait is the person's setting).
+// Herdr Core holds a send while the person has unsent text in the target's prompt, until
+// `draft_wait` (default 60 s, the person's setting) has passed since their last key, else for
+// ~3 s of quiet; then it pastes after their text and submits both. Holds of ~106 s were seen.
+// When this runs out, `hc` is killed but core may still deliver: a timeout means "unknown".
 export const SEND_TIMEOUT = 150_000;
 
 export class CoreClient {
@@ -124,31 +133,50 @@ export class CoreClient {
   }
 
   send(origin, text, { timeout = SEND_TIMEOUT } = {}) {
-    const info = this.validateDelivery(origin);
-    const state = info.status.state;
-    // No `--if`: Herdr Core checks it only after its quiet wait (~3 s, longer for a draft), by
-    // when idle and working may have swapped harmlessly. A plain send still refuses a blocked agent.
-    const args = state === "idle" || state === "working" || state === "done"
-      ? ["send", origin.terminal, text]
-      : null;
-    if (!args) throw new CoreError(`The originating agent is ${state}; delivery was refused.`, { code: "origin_unavailable" });
-    let result;
-    try {
-      result = this.run(args, { timeout });
-    } catch (error) {
-      if (error.code !== "timeout") throw error;
-      throw new CoreError(
-        "Herdr Core kept the message waiting for unsent text in the agent's prompt. Send or clear it, then try again.",
-        { code: "timeout" },
-      );
-    }
-    if (result.code !== 0) {
+    const deadline = Date.now() + timeout;
+    for (let attempt = 1; ; attempt += 1) {
+      let info;
+      try {
+        info = this.validateDelivery(origin);
+      } catch (error) {
+        // Nothing was typed, so this is a failure, not an unknown delivery.
+        if (error.code === "timeout") throw new CoreError(error.message, { code: "validate_timeout" });
+        throw error;
+      }
+      const state = info.status.state;
+      // `--if` is the fence after core's hold: an agent that exits meanwhile leaves a shell, which
+      // has neither status, so core refuses rather than typing the message into it.
+      const args = state === "idle" || state === "working"
+        ? ["send", "--if", state, origin.terminal, text]
+        : state === "done"
+          ? ["send", origin.terminal, text]
+          : null;
+      if (!args) throw new CoreError(`The originating agent is ${state}; delivery was refused.`, { code: "origin_unavailable" });
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) throw sendTimeout(timeout);
+      let result;
+      try {
+        result = this.run(args, { timeout: remaining });
+      } catch (error) {
+        if (error.code !== "timeout") throw error;
+        throw sendTimeout(timeout);
+      }
+      if (result.code === 0) return result;
+      // Core checks `--if` only after its hold, by when the agent may have moved between idle and
+      // working; nothing was typed. Check the process again and retry with its current state.
+      if (stderrError(result.stderr)?.kind === "status_mismatch" && attempt < 3) continue;
       throw new CoreError(stderrMessage(result.stderr) || "Herdr Core refused the message.", {
         code: "send_failed",
         stderr: result.stderr,
         exitCode: result.code,
       });
     }
-    return result;
   }
+}
+
+function sendTimeout(timeout) {
+  return new CoreError(
+    `Herdr Core did not confirm delivery within ${Math.round(timeout / 1000)} s; it waits while the agent's prompt has unsent text. The message may still arrive: check the agent before sending again.`,
+    { code: "timeout" },
+  );
 }
