@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-11-16
+
+### Fixed
+
+- Enabling Super Agent works with Herdr Core 0.1.21, which holds a message while you have unsent text in the agent's prompt. The enable and disable dialogs close at once and finish in the background; the agent's menu shows the change in progress, and a toast names the agent if it fails. Previously enabling failed with "Herdr Core did not answer before the timeout."
+- An agent that switches between idle and working while Herdr Core holds a message no longer refuses it ("… is working, not idle"): Super Agent checks the agent again and retries.
+- A new agent started in the terminal of an enabled one no longer shows the `S` badge, so Disable no longer says it is already disabled.
+- Replies held by Herdr Core are no longer marked undelivered while still being sent, and a send that times out says the message may still arrive instead of asking you to try again.
+
 ## [0.2.1] - 2026-11-03
 
 ### Changed
