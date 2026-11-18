@@ -54,7 +54,7 @@ The mod calls `exec` for Node, `watchFolder` for the logical revision signal, `h
 
 ## Watch out
 
-Node 22.19 or newer is required (pi-tui's minimum). Tested with Herdr app 0.1.12; no older minimum is established. A catalog copy is incomplete until the person approves and `setup.mjs --install-skill` runs. The mod uses `exec` for Node and `hc`, and setup writes outside the mod folder (see Before you add it). No network requests.
+Node 22.19 or newer is required (pi-tui's minimum). Herdr app 0.1.16 or newer is required: the Agents sidebar follows Herdr 0.1.16's (pins as terminal labels, named tabs). A catalog copy is incomplete until the person approves and `setup.mjs --install-skill` runs. The mod uses `exec` for Node and `hc`, and setup writes outside the mod folder (see Before you add it). No network requests.
 
 V1 supports local agents only. Stable session enablement recognizes Pi, Claude Code and Codex. Claude Code continuity requires explicit `--resume <session-id>`; bare `--continue` or picker resume is not supported. Herdr runs Codex with `--no-daemon`, so Super Agent delivers through `hc send`, not Codex's daemon-only queue command. Provider session IDs are correlation data, not authentication. Herdr does not expose an atomic exact agent-process incarnation. Super Agent fences delivery by terminal address, app, foreground PID and status, but exit/replacement after the final check remains possible. Provider session identity authorizes lazy rebinding only after the prior process is no longer live; it never replaces the delivery fence. `hc send` success means text was submitted, not that the agent understood it.
 

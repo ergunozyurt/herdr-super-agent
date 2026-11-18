@@ -51,7 +51,7 @@ A real session: one lead, three repos, a child agent in each.
 
 ## Requirements
 
-- Herdr app and herdr-core (tested with Herdr app 0.1.12)
+- Herdr app 0.1.16 or newer, and herdr-core
 - Node.js 22.19 or newer (`node:sqlite`, and pi-tui's minimum)
 - Local agents: Pi, Claude Code or Codex
 
