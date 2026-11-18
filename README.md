@@ -72,6 +72,8 @@ node --no-warnings=ExperimentalWarning ~/.config/herdr-app/mods/super-agent/setu
 
 Copying the folder is not enough; setup must run. It clones your shown layout to `super-agent-<layout>`, swaps in Super Agent's Agents panel and switches to the clone, leaving the original layout untouched. If any step fails, it switches back and removes the clone. Then right-click a main agent in the Agents sidebar and enable Super Agent.
 
+**Following Herdr.** Herdr never updates a cloned layout, so Super Agent does: each time Herdr starts, the sidebar checks every `super-agent-<layout>` against the layout it was cloned from. If Herdr changed that layout and you did not edit the clone, the clone is rebuilt from it with Super Agent's Agents panel swapped in, and a toast says so. If you edited the clone, it is left alone and a toast tells you to run `herdr-super-agent follow-herdr --refresh-layout`, which rebuilds it and keeps your old file as `super-agent-<layout>.json.old-<time>`. Super Agent's Agents panel is its own copy of Herdr's; when Herdr ships a newer Agents panel than the one Super Agent follows, a toast says Super Agent's lacks those changes until Super Agent is updated.
+
 ## Update
 
 1. Replace the files in the existing mod folder, keeping its name:
@@ -87,7 +89,7 @@ Copying the folder is not enough; setup must run. It clones your shown layout to
    node --no-warnings=ExperimentalWarning ~/.config/herdr-app/mods/super-agent/setup.mjs --install-skill
    ```
 
-Setup recognises its own Agents panel and reuses that layout instead of cloning again. It keeps the launcher and updates the skills. Do not install a second copy: a folder renamed to `super-agent-2` is a separate mod with its own empty database. Request history and drafts live outside the mod folder, so they persist across updates.
+Setup recognises its own Agents panel and reuses that layout instead of cloning again, catching it up with any change Herdr made to its source layout. It keeps the launcher and updates the skills. Do not install a second copy: a folder renamed to `super-agent-2` is a separate mod with its own empty database. Request history and drafts live outside the mod folder, so they persist across updates.
 
 ## Uninstall
 
@@ -125,7 +127,7 @@ If you set `HERDR_APP_HOME`, use it in place of `~/.config/herdr-app`. If the ca
 
 - **Runs:** Node, and Herdr's `hc` and `herdr-app` commands; `osascript` on macOS when you paste an image with Ctrl+V. It makes no network requests.
 - **Attachments:** pasted images are saved as PNG under `~/.config/herdr-app/data/super-agent/attachments/<request>/`.
-- **Layout:** setup writes a new `~/.config/herdr-app/layouts/super-agent-<layout>.json` clone; it never edits the source layout.
+- **Layout:** setup writes a new `~/.config/herdr-app/layouts/super-agent-<layout>.json` clone; it never edits the source layout. When Herdr changes the source layout, the mod rewrites that clone (only if you have not edited it) and remembers the source it was built from in `~/.config/herdr-app/data/super-agent/layout-bases/`.
 - **Data:** a SQLite database at `~/.config/herdr-app/data/super-agent/inbox.sqlite` holds requests, messages, drafts and enabled sessions.
 - **Launcher:** `~/.local/bin/herdr-super-agent`, pinned to the Node and Herdr app home that ran setup. Setup refuses to overwrite a different file at that path.
 - **Skills (with `--install-skill`):** `~/.pi/agent/skills/super-agent/SKILL.md`, `~/.claude/skills/super-agent/SKILL.md` and `~/.codex/skills/super-agent/SKILL.md`. Setup refuses to overwrite a skill there that is not Super Agent's.

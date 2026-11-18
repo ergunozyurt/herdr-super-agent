@@ -131,6 +131,26 @@ export class AgentsController {
         cx.notify();
       }
     });
+    // Once a start: rebuild a Super Agent layout Herdr's update left behind, and say what it
+    // could not follow. The same warning shows once per Herdr version.
+    cx.spawn(async (cx) => {
+      await cx.sleep(5000);
+      let result;
+      try {
+        result = await this.client.followHerdr();
+      } catch {
+        return;
+      }
+      // A rebuild is news each time; a warning that needs the person once per Herdr version.
+      const rebuilt = new Set(result.layouts.filter((item) => item.state === "updated" || item.state === "refreshed").map((item) => item.layout));
+      const news = result.warnings.filter((body) => [...rebuilt].some((name) => body.startsWith(`${name} was rebuilt`)));
+      const warnings = result.warnings.filter((body) => !news.includes(body));
+      const seen = `${result.herdr}:${warnings.join("|")}`;
+      const fresh = warnings.length && localStorage.getItem("followNotice") !== seen;
+      if (fresh) localStorage.setItem("followNotice", seen);
+      for (const body of news) notify({ title: "Super Agent follows Herdr", body, level: "info" });
+      for (const body of fresh ? warnings : []) notify({ title: "Super Agent and Herdr", body, level: "warning" });
+    });
     cx.timer.every(5000, (cx) => {
       if (this.error) cx.spawn(async (cx) => this.refresh(cx, true));
       cx.spawn(async (cx) => this.prune(cx));

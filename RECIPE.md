@@ -6,7 +6,8 @@ Your main agent stops asking questions in its busy terminal. It opens a request 
 
 **Before you add it.** Copying `mods/super-agent/` is incomplete until setup runs. Setup runs Node and `herdr-app`; the mod runs Node and Herdr's `hc`, and `osascript` on macOS when the person pastes an image; none of them makes network requests. Paths assume the default app home `~/.config/herdr-app` (`HERDR_APP_HOME` overrides it) and the folder name `super-agent` (use the installed name if renamed). Setup writes outside the mod folder:
 
-- `~/.config/herdr-app/layouts/super-agent-<shown layout>.json` (or `-2`, `-3`, …): a clone of the shown layout with this mod's Agents block; setup switches to it and leaves the source layout unchanged.
+- `~/.config/herdr-app/layouts/super-agent-<shown layout>.json` (or `-2`, `-3`, …): a clone of the shown layout with this mod's Agents block; setup switches to it and leaves the source layout unchanged. Whenever Herdr starts, the mod rebuilds that clone from its source layout if Herdr changed the source and the person did not edit the clone (an edited clone is left alone and a toast offers `herdr-super-agent follow-herdr --refresh-layout`, which keeps the old file as `.json.old-<time>`).
+- `~/.config/herdr-app/data/super-agent/layout-bases/<clone>.json`: the source layout each clone was built from, to tell the person's edits from Herdr's.
 - `~/.config/herdr-app/data/super-agent/inbox.sqlite` (plus `-wal`, `-shm` and `inbox.sqlite.revision`): requests, threads and drafts.
 - `~/.local/bin/herdr-super-agent`: a launcher pinned to the current Node, mod folder and app home.
 - With `--install-skill`, the same communication-policy skill at `~/.pi/agent/skills/super-agent/SKILL.md`, `~/.claude/skills/super-agent/SKILL.md` and `~/.codex/skills/super-agent/SKILL.md`.
@@ -17,7 +18,7 @@ Your main agent stops asking questions in its busy terminal. It opens a request 
 node --no-warnings=ExperimentalWarning ~/.config/herdr-app/mods/super-agent/setup.mjs --install-skill
 ```
 
-**Updating.** If Super Agent is already installed, this is an update, not a name clash: replace the files in the existing installed folder rather than adding a second copy such as `super-agent-2` (a renamed copy gets its own empty data directory and its own clone). Then show the installed Super Agent layout and rerun setup; it reuses that layout instead of cloning again. Rerun from any other layout and it makes another clone. The SQLite database is never reset, so requests, threads and drafts persist.
+**Updating.** If Super Agent is already installed, this is an update, not a name clash: replace the files in the existing installed folder rather than adding a second copy such as `super-agent-2` (a renamed copy gets its own empty data directory and its own clone). Then show the installed Super Agent layout and rerun setup; it reuses that layout instead of cloning again and catches it up with any change Herdr made to its source layout. Rerun from any other layout and it makes another clone. The SQLite database is never reset, so requests, threads and drafts persist.
 
 ## What you see
 
@@ -39,7 +40,7 @@ Drafts are saved as you type and survive hiding, reopening, incoming messages, a
 
 The repository contains one catalog mod folder, `mods/super-agent/`, and no `layouts/` directory. `main.js` dispatches two prop roles:
 
-- `agents-view.js`: an Apache-2.0 derivative of Herdr's shipped Agents mod, extended with request rows, notification ownership, thread terminal start/show/hide, and conservative origin pruning.
+- `agents-view.js`: an Apache-2.0 derivative of Herdr's shipped Agents mod (the version in `upstream.json`; `npm run follow-herdr -- --merge` merges a newer one three-way against the unchanged copy in `upstream/`), extended with request rows, notification ownership, thread terminal start/show/hide, and conservative origin pruning.
 - `lib/thread.mjs` (run as `super-agent.mjs thread <request>`): the terminal thread. It reads and writes SQLite in-process, prints messages into scrollback (`lib/wrap.mjs` word-wraps them), and pins pi-tui's Editor below them; pi-tui decodes keys and paste. `lib/clipboard.mjs` reads pasted images. pi-tui and its dependencies are vendored in `vendor/node_modules` (see `vendor/MANIFEST.json`); there is no install step. `lib/delivery.mjs` is shared with the CLI.
 
 `inbox-client.js` is the mod-side adapter to `bin/super-agent.mjs`. `lib/identity.mjs` maps reported agent apps to provider session metadata: Pi uses `PI_SESSION_ID`, Claude Code `CLAUDE_CODE_SESSION_ID`, and Codex root `CODEX_SESSION_ID` with matching `CODEX_THREAD_ID`; agent apps without an identity integration keep a process-bound compatibility path. The Node helper uses built-in `node:sqlite` with WAL, busy timeout, immediate write transactions, causal revisions, expected-revision fencing, delivery reservations, enabled sessions, current process bindings, pending enablements, and hidden resolved tombstones.
@@ -48,17 +49,17 @@ Committed mutations atomically replace `inbox.sqlite.revision`. The mods wait on
 
 Delivery records a pending operation, revalidates terminal state, app and foreground PID, and calls `hc send` without force: `--if` for idle/working agents, non-forced for done agents. Confirmed submission clears only the draft revision that was sent.
 
-`setup.mjs` derives the mod name from its installed folder, clones the shown layout (or reuses one already holding this mod's Agents block), pins the absolute Node path in the block's props, checks `herdr-app status`, initializes SQLite and writes the launcher; `--install-skill` adds the skills.
+`setup.mjs` derives the mod name from its installed folder, clones the shown layout (or reuses one already holding this mod's Agents block), pins the absolute Node path in the block's props, checks `herdr-app status`, initializes SQLite and writes the launcher; `--install-skill` adds the skills. `lib/follow.mjs` (setup, and `herdr-super-agent follow-herdr`, which the sidebar runs once a start) rebuilds a clone whose source Herdr changed, restores it if `herdr-app status` then reports an error for it, and compares Herdr's shipped Agents mod with the version `agents-view.js` follows.
 
 The mod calls `exec` for Node, `watchFolder` for the logical revision signal, `hc run`/`hc kill` for thread terminals (labelled `super-agent.request=<id>`), `openOverlay` with a terminal block to show them, `notify` and `playSound("blocked")` for attention, and `hc get`/`hc send` through the helper. A thread's Esc reaches the mod as the `<mod>.hide-<request>` command.
 
 ## Watch out
 
-Node 22.19 or newer is required (pi-tui's minimum). Herdr app 0.1.16 or newer is required: the Agents sidebar follows Herdr 0.1.16's (pins as terminal labels, named tabs). A catalog copy is incomplete until the person approves and `setup.mjs --install-skill` runs. The mod uses `exec` for Node and `hc`, and setup writes outside the mod folder (see Before you add it). No network requests.
+Node 22.19 or newer is required (pi-tui's minimum). Herdr app 0.1.16 or newer is required: the Agents sidebar follows Herdr 0.1.16's (pins as terminal labels, named tabs), and an older Herdr gets a toast asking to update. A catalog copy is incomplete until the person approves and `setup.mjs --install-skill` runs. The mod uses `exec` for Node and `hc`, and setup writes outside the mod folder (see Before you add it). No network requests.
 
 V1 supports local agents only. Stable session enablement recognizes Pi, Claude Code and Codex. Claude Code continuity requires explicit `--resume <session-id>`; bare `--continue` or picker resume is not supported. Herdr runs Codex with `--no-daemon`, so Super Agent delivers through `hc send`, not Codex's daemon-only queue command. Provider session IDs are correlation data, not authentication. Herdr does not expose an atomic exact agent-process incarnation. Super Agent fences delivery by terminal address, app, foreground PID and status, but exit/replacement after the final check remains possible. Provider session identity authorizes lazy rebinding only after the prior process is no longer live; it never replaces the delivery fence. `hc send` success means text was submitted, not that the agent understood it.
 
-Setup refuses layouts without exactly one shipped `agents` block, and stops if `~/.local/bin/herdr-super-agent` or a skill path already holds something that is not this installation (an existing launcher pinned to a different Node or folder counts). It edits only a newly cloned layout. On error it switches back and removes the clone, removes a launcher and skills it created, and restores skills it overwrote. Registry installers may rename the mod folder; every path derives from that installed name.
+Setup refuses layouts without exactly one shipped `agents` block, and stops if `~/.local/bin/herdr-super-agent` or a skill path already holds something that is not this installation (an existing launcher pinned to a different Node or folder counts). It edits only a newly cloned layout or its own installed clone. On error it switches back and removes the clone, removes a launcher and skills it created, and restores skills it overwrote. Registry installers may rename the mod folder; every path derives from that installed name.
 
 The Agents attribution in `NOTICE` and Apache-2.0 license must stay. Tests belong outside `mods/super-agent/`. The catalog requires a real root-level `preview.png`; use only a person-approved screenshot scrubbed of private agent names, projects, requests and terminal content.
 

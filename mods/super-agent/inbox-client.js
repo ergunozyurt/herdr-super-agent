@@ -65,6 +65,10 @@ export class InboxClient {
     return this.run(["prune", "--ids", JSON.stringify(ids)]);
   }
 
+  followHerdr() {
+    return this.run(["follow-herdr"]);
+  }
+
   async waitForChange() {
     for (;;) {
       const changed = await watchFolder(this.data);
