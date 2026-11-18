@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-11-18
+
+### Fixed
+
+- The Enable and Disable dialogs say "Enable Super Agent?" or "Disable Super Agent?" with the agent's name on its own line, cut to one line. The name now often includes the agent's session title, which wrapped the old title over three lines.
+
 ## [0.3.0] - 2026-11-18
 
 ### Added
