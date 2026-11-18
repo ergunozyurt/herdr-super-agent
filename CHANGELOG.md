@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-11-18
+
+### Added
+
+- Super Agent's layout follows Herdr. Each time Herdr starts, a `super-agent-<layout>` clone whose source layout Herdr changed is rebuilt from it, if you have not edited the clone; a toast says so. An edited clone is left alone, and `herdr-super-agent follow-herdr --layout <clone> --refresh-layout` rebuilds it, keeping the old file. A rebuild Herdr rejects, or that cannot be checked with `herdr-app status`, is put back with a toast. Rerunning setup catches an unedited clone up too; `setup.mjs --refresh-layout` rebuilds an edited one.
+- A toast says when Herdr ships a different Agents sidebar than the one Super Agent's follows, or asks you to update an older Herdr.
+
+### Changed
+
+- Herdr app 0.1.16 or newer is now required.
+- Super Agent's Agents sidebar now follows Herdr 0.1.16's (was 0.1.11): pins are shared through terminal labels, a kept sub-agent is listed once under its parent, a title keeps its leading bracket, agents sharing a tab show their own titles, a tab Herdr named follows its agent's session title, clicking a listed sub-agent focuses it, and a viewed done agent leaves Done at once.
+
 ## [0.2.2] - 2026-11-16
 
 ### Fixed

@@ -1,11 +1,13 @@
 #!/usr/bin/env -S node --no-warnings=ExperimentalWarning
 
+import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CoreClient, CoreError } from "../lib/core.mjs";
 import { deliverHuman, publicError as errorFields } from "../lib/delivery.mjs";
 import { requireSessionIdentity, sessionIdentity, supportsSessionIdentity } from "../lib/identity.mjs";
+import { followHerdr, followWarnings } from "../lib/follow.mjs";
 import { ConflictError, InboxStore } from "../lib/store.mjs";
 
 const file = fileURLToPath(import.meta.url);
@@ -13,7 +15,13 @@ const installedName = basename(dirname(dirname(file)));
 const appHome = process.env.HERDR_APP_HOME ?? join(homedir(), ".config", "herdr-app");
 const dbPath = process.env.SUPER_AGENT_DB ?? join(appHome, "data", installedName, "inbox.sqlite");
 
-const VALUE_OPTIONS = new Set(["title", "body", "expected-revision", "draft-revision", "open", "ids", "agent-name"]);
+const VALUE_OPTIONS = new Set(["title", "body", "expected-revision", "draft-revision", "open", "ids", "agent-name", "layout"]);
+
+function herdrApp(args) {
+  const result = spawnSync(process.env.SUPER_AGENT_HERDR_APP ?? "herdr-app", args, { encoding: "utf8", env: { ...process.env, HERDR_APP_HOME: appHome } });
+  if (result.error || result.status !== 0) throw new Error(result.error?.message || result.stderr.trim() || `herdr-app exited with ${result.status}.`);
+  return result.stdout;
+}
 
 function parse(argv) {
   const [command, ...rest] = argv;
@@ -98,8 +106,24 @@ async function main() {
         "herdr-super-agent ask --title <title> --body <message>",
         "herdr-super-agent append <request> --body <message>",
         "herdr-super-agent resolve <request>",
+        "herdr-super-agent follow-herdr [--layout <name>] [--refresh-layout] [--dry-run]",
       ],
     });
+    return;
+  }
+
+  // Rebuilds Super Agent layouts whose source layout Herdr changed; needs no inbox.
+  if (command === "follow-herdr") {
+    const result = followHerdr({
+      appHome,
+      modName: installedName,
+      herdrApp,
+      layouts: options.layout ? [options.layout] : null,
+      refresh: Boolean(options["refresh-layout"]),
+      dryRun: Boolean(options["dry-run"]),
+    });
+    print({ ...result, warnings: followWarnings(result) });
+    if (result.layouts.some((layout) => layout.state === "failed")) process.exitCode = 1;
     return;
   }
 

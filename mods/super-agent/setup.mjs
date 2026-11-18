@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { followHerdr, followWarnings, inspectLayout, patchLayout, saveBase } from "./lib/follow.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const modName = basename(here);
@@ -19,6 +20,7 @@ const skillTargets = [
   join(homedir(), ".codex", "skills", "super-agent", "SKILL.md"),
 ];
 const installSkill = process.argv.includes("--install-skill");
+const refreshLayout = process.argv.includes("--refresh-layout");
 const launcher = `#!/bin/sh\nHERDR_APP_HOME='${appHome.replaceAll("'", "'\\''")}' exec '${process.execPath.replaceAll("'", "'\\''")}' --no-warnings=ExperimentalWarning '${cli.replaceAll("'", "'\\''")}' \"$@\"\n`;
 
 function command(program, args, { json = true } = {}) {
@@ -34,12 +36,6 @@ function command(program, args, { json = true } = {}) {
   }
 }
 
-function nodes(node, predicate, found = []) {
-  if (predicate(node)) found.push(node);
-  for (const child of node?.children ?? []) nodes(child, predicate, found);
-  return found;
-}
-
 function layoutPath(name) {
   return join(layoutsDir, `${name}.json`);
 }
@@ -48,18 +44,6 @@ function availableClone(source) {
   const base = `super-agent-${source}`;
   if (!existsSync(layoutPath(base))) return base;
   for (let i = 2; ; i += 1) if (!existsSync(layoutPath(`${base}-${i}`))) return `${base}-${i}`;
-}
-
-function inspectLayout(layout) {
-  const ownBlocks = nodes(layout, (node) =>
-    node?.type === "block" && node.content?.mod === modName && node.content?.props?.role === "agents",
-  );
-  if (ownBlocks.length === 1) return { installed: true, agentBlock: ownBlocks[0] };
-  const agentBlocks = nodes(layout, (node) => node?.type === "block" && node.content?.mod === "agents");
-  if (agentBlocks.length !== 1) {
-    throw new Error(`expected one shipped Agents block or one installed ${modName} Agents block.`);
-  }
-  return { installed: false, agentBlock: agentBlocks[0] };
 }
 
 function preflightLink() {
@@ -81,14 +65,6 @@ function preflightSkills() {
   }
 }
 
-function patchLayout(layout) {
-  const { agentBlock } = inspectLayout(layout);
-  agentBlock.content = {
-    mod: modName,
-    props: { role: "agents", mod: modName, node: process.execPath },
-  };
-}
-
 async function main() {
   let source = null;
   let clone = null;
@@ -107,8 +83,10 @@ async function main() {
     if (!source) throw new Error("Herdr has no shown layout.");
     const sourceFile = layoutPath(source);
     if (!existsSync(sourceFile)) throw new Error(`cannot find ${sourceFile}.`);
-    const inspection = inspectLayout(JSON.parse(readFileSync(sourceFile, "utf8")));
+    const sourceLayout = JSON.parse(readFileSync(sourceFile, "utf8"));
+    const inspection = inspectLayout(sourceLayout, modName);
     let targetLayout = source;
+    let followed = null;
 
     if (!inspection.installed) {
       clone = availableClone(source);
@@ -117,11 +95,15 @@ async function main() {
       if (!existsSync(cloneFile)) throw new Error(`layout clone did not create ${cloneFile}.`);
 
       const layout = JSON.parse(readFileSync(cloneFile, "utf8"));
-      patchLayout(layout);
+      patchLayout(layout, modName, process.execPath);
       const temporary = `${cloneFile}.tmp-${process.pid}`;
       writeFileSync(temporary, `${JSON.stringify(layout, null, 2)}\n`);
       renameSync(temporary, cloneFile);
+      saveBase(appHome, modName, clone, sourceLayout);
       targetLayout = clone;
+    } else {
+      // Rerun from an installed layout: catch it up with whatever Herdr changed in its source.
+      followed = followHerdr({ appHome, modName, herdrApp: (args) => command("herdr-app", args, { json: false }), layouts: [source], node: process.execPath, refresh: refreshLayout });
     }
 
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000);
@@ -148,12 +130,15 @@ async function main() {
       linkCreated = true;
     }
 
+    const result = followed ?? followHerdr({ appHome, modName, herdrApp: (args) => command("herdr-app", args, { json: false }), layouts: [], dryRun: true });
     process.stdout.write(`${JSON.stringify({
       layout: targetLayout,
       mod: modName,
       cli: link,
       skills: installSkill ? skillTargets : [],
+      follow: { layout: result.layouts[0] ?? { layout: targetLayout, state: "current" }, agents: result.agents },
     }, null, 2)}\n`);
+    for (const warning of followWarnings(result)) process.stderr.write(`Super Agent: ${warning}\n`);
   } catch (error) {
     if (source && clone) {
       try { command("herdr-app", ["do", "layout.switch", "--name", source]); } catch {}
