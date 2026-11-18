@@ -123,6 +123,7 @@ async function main() {
       dryRun: Boolean(options["dry-run"]),
     });
     print({ ...result, warnings: followWarnings(result) });
+    if (result.layouts.some((layout) => layout.state === "failed")) process.exitCode = 1;
     return;
   }
 

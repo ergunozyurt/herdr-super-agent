@@ -72,7 +72,7 @@ node --no-warnings=ExperimentalWarning ~/.config/herdr-app/mods/super-agent/setu
 
 Copying the folder is not enough; setup must run. It clones your shown layout to `super-agent-<layout>`, swaps in Super Agent's Agents panel and switches to the clone, leaving the original layout untouched. If any step fails, it switches back and removes the clone. Then right-click a main agent in the Agents sidebar and enable Super Agent.
 
-**Following Herdr.** Herdr never updates a cloned layout, so Super Agent does: each time Herdr starts, the sidebar checks every `super-agent-<layout>` against the layout it was cloned from. If Herdr changed that layout and you did not edit the clone, the clone is rebuilt from it with Super Agent's Agents panel swapped in, and a toast says so. If you edited the clone, it is left alone and a toast tells you to run `herdr-super-agent follow-herdr --refresh-layout`, which rebuilds it and keeps your old file as `super-agent-<layout>.json.old-<time>`. Super Agent's Agents panel is its own copy of Herdr's; when Herdr ships a newer Agents panel than the one Super Agent follows, a toast says Super Agent's lacks those changes until Super Agent is updated.
+**Following Herdr.** Herdr never updates a cloned layout, so Super Agent does: each time Herdr starts, the sidebar checks every `super-agent-<layout>` against the layout it was cloned from. If Herdr changed that layout and you did not edit the clone, the clone is rebuilt from it with Super Agent's Agents panel swapped in, and a toast says so. If you edited the clone, it is left alone and a toast tells you to run `herdr-super-agent follow-herdr --layout super-agent-<layout> --refresh-layout`, which rebuilds it and keeps your old file as `super-agent-<layout>.json.old-<time>`. If Herdr reports an error for a rebuilt layout, or Super Agent cannot ask it, the old layout is put back and a toast says why; a toast also says when the source layout is gone. Super Agent's Agents panel is its own copy of Herdr's; when Herdr ships a newer Agents panel than the one Super Agent follows, a toast says Super Agent's lacks those changes until Super Agent is updated.
 
 ## Update
 
@@ -89,7 +89,7 @@ Copying the folder is not enough; setup must run. It clones your shown layout to
    node --no-warnings=ExperimentalWarning ~/.config/herdr-app/mods/super-agent/setup.mjs --install-skill
    ```
 
-Setup recognises its own Agents panel and reuses that layout instead of cloning again, catching it up with any change Herdr made to its source layout. It keeps the launcher and updates the skills. Do not install a second copy: a folder renamed to `super-agent-2` is a separate mod with its own empty database. Request history and drafts live outside the mod folder, so they persist across updates.
+Setup recognises its own Agents panel and reuses that layout instead of cloning again, catching it up with any change Herdr made to its source layout unless you edited it (add `--refresh-layout` to rebuild it anyway, keeping the old file). It keeps the launcher and updates the skills. Do not install a second copy: a folder renamed to `super-agent-2` is a separate mod with its own empty database. Request history and drafts live outside the mod folder, so they persist across updates.
 
 ## Uninstall
 

@@ -3,15 +3,18 @@
 // Herdr never updates a clone, so without this the clone stays frozen at its first Herdr version.
 
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(dirname(fileURLToPath(import.meta.url)));
 
 // The Herdr version agents-view.js was last merged with, and the hash of that version's
-// shipped mods/agents/main.js. scripts/follow-herdr.mjs --merge updates it.
-export const UPSTREAM = JSON.parse(readFileSync(join(here, "upstream.json"), "utf8"));
+// shipped mods/agents/main.js. scripts/follow-herdr.mjs --merge updates it. Read on use, so a
+// missing or broken file only affects drift reports, not the inbox commands that load this module.
+export function upstream() {
+  return JSON.parse(readFileSync(join(here, "upstream.json"), "utf8"));
+}
 
 export function nodes(node, predicate, found = []) {
   if (predicate(node)) found.push(node);
@@ -90,6 +93,7 @@ export function installedLayouts(appHome, modName) {
     try {
       return nodes(readJson(join(dir, `${name}.json`)), isOwnBlock(modName)).length === 1;
     } catch {
+      // Not JSON (Herdr shows its own error for a broken layout); can't be ours to follow.
       return false;
     }
   });
@@ -101,25 +105,33 @@ export function installedLayouts(appHome, modName) {
 //   updated     its source changed and it had no edits of its own, so it was rebuilt
 //   edited      its source changed, but so did it (or it can't tell): left alone unless refresh
 //   refreshed   rebuilt on request despite its own edits; the old file is kept as backup
-//   no-source   it records no source layout, or that layout is gone or has no single Agents block
+//   no-source   it records no source layout (reason "unrecorded"), that layout is gone ("missing"),
+//               or it has no single shipped Agents block or is itself a Super Agent layout ("unusable")
+// A rebuild returns `previous` (the old file) and `sourceLayout`; the caller saves that as the new
+// base only once Herdr accepts the rebuilt layout (see followHerdr), so a rejected rebuild that is
+// put back still matches its old base.
 export function followLayout({ appHome, modName, layoutName, node, herdrVersion = null, refresh = false, dryRun = false, now = Date.now() }) {
   const { layouts } = paths(appHome, modName);
   const file = join(layouts, `${layoutName}.json`);
   const basePath = join(paths(appHome, modName).bases, `${layoutName}.json`);
+  if (!existsSync(file)) throw new Error(`there is no layout named ${layoutName}.`);
   const current = readJson(file);
+  if (nodes(current, isOwnBlock(modName)).length !== 1) throw new Error(`${layoutName} is not a ${modName} layout.`);
   const sourceName = current.cloned_from?.name;
   const result = { layout: layoutName, source: sourceName ?? null };
-  const sourceFile = sourceName && join(layouts, `${sourceName}.json`);
-  if (!sourceName || sourceName === layoutName || !existsSync(sourceFile)) return { ...result, state: "no-source" };
+  if (!sourceName || sourceName === layoutName) return { ...result, state: "no-source", reason: "unrecorded" };
+  const sourceFile = join(layouts, `${sourceName}.json`);
+  if (!existsSync(sourceFile)) return { ...result, state: "no-source", reason: "missing" };
   const source = readJson(sourceFile);
-  if (nodes(source, isOwnBlock(modName)).length || nodes(source, isShippedAgents).length !== 1) return { ...result, state: "no-source" };
+  if (nodes(source, isOwnBlock(modName)).length || nodes(source, isShippedAgents).length !== 1) return { ...result, state: "no-source", reason: "unusable" };
 
   const mine = canonical(current, modName);
+  const base = existsSync(basePath) ? readJson(basePath) : null;
   if (mine === canonical(source, modName)) {
-    if (!dryRun && !existsSync(basePath)) saveBase(appHome, modName, layoutName, source);
+    // Matching its source is the best evidence of no edits: remember this source as its base.
+    if (!dryRun && (!base || canonical(base, modName) !== mine)) saveBase(appHome, modName, layoutName, source);
     return { ...result, state: "current" };
   }
-  const base = existsSync(basePath) ? readJson(basePath) : null;
   const untouched = Boolean(base) && mine === canonical(base, modName);
   if (!untouched && !refresh) return { ...result, state: "edited", known: Boolean(base) };
 
@@ -135,12 +147,20 @@ export function followLayout({ appHome, modName, layoutName, node, herdrVersion 
   const previous = readFileSync(file, "utf8");
   if (backup) writeFileSync(backup, previous);
   writeAtomic(file, layoutText(next));
-  saveBase(appHome, modName, layoutName, source);
-  return { ...result, state: untouched ? "updated" : "refreshed", backup, previous };
+  return { ...result, state: untouched ? "updated" : "refreshed", backup, previous, sourceLayout: source };
 }
 
 export function restoreLayout(appHome, layoutName, previous) {
   writeAtomic(join(appHome, "layouts", `${layoutName}.json`), previous);
+}
+
+// Whether `text` mentions layout `name` itself: a name followed by a letter, digit or dash is
+// another layout (super-agent-main-2 is not super-agent-main).
+export function namesLayout(text, name) {
+  for (let at = text.indexOf(name); at !== -1; at = text.indexOf(name, at + 1)) {
+    if (!/[\w-]/.test(text[at + name.length] ?? "")) return true;
+  }
+  return false;
 }
 
 // herdr-app's version, or null when it can't be asked.
@@ -167,19 +187,28 @@ export function followHerdr({ appHome, modName, herdrApp, layouts = null, node =
   const rebuilt = results.filter((result) => result.previous);
   if (rebuilt.length) {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, settle);
-    let errors = [];
+    let errors = null;
+    let unchecked = null;
     try {
       errors = JSON.parse(herdrApp(["status"])).errors ?? [];
-    } catch {}
+    } catch (error) {
+      unchecked = error.message;
+    }
     for (const result of rebuilt) {
-      const mine = errors.filter((error) => JSON.stringify(error).includes(result.layout));
-      if (mine.length) {
+      const mine = errors?.filter((error) => namesLayout(JSON.stringify(error), result.layout)) ?? [];
+      if (unchecked || mine.length) {
         restoreLayout(appHome, result.layout, result.previous);
-        Object.assign(result, { state: "failed", error: JSON.stringify(mine) });
+        if (result.backup) rmSync(result.backup, { force: true });
+        Object.assign(result, { state: "failed", backup: null, error: unchecked ? `could not check it with herdr-app status, so it was put back: ${unchecked}` : JSON.stringify(mine) });
+      } else {
+        saveBase(appHome, modName, result.layout, result.sourceLayout);
       }
     }
   }
-  for (const result of results) delete result.previous;
+  for (const result of results) {
+    delete result.previous;
+    delete result.sourceLayout;
+  }
   return { herdr: version, layouts: results, agents: agentsDrift({ appHome, modName, herdrVersion: version }) };
 }
 
@@ -199,12 +228,19 @@ export function compareVersions(a, b) {
 }
 
 // Whether Herdr ships the same Agents mod that agents-view.js was last merged with:
-// "behind" when Herdr's is newer, "herdr-older" when this Herdr predates the followed one.
+// "herdr-older" when this Herdr predates the followed version, otherwise "behind" whenever
+// Herdr's file differs (including when Herdr's version can't be read).
 export function agentsDrift({ appHome, modName, herdrVersion = null }) {
   const shipped = paths(appHome, modName).shippedAgents;
-  const follows = UPSTREAM.herdr;
+  let pinned;
+  try {
+    pinned = upstream();
+  } catch (error) {
+    return { state: "unknown", follows: null, error: `cannot read upstream.json: ${error.message}` };
+  }
+  const follows = pinned.herdr;
   if (!existsSync(shipped)) return { state: "unknown", follows };
-  if (sha256(shipped) === UPSTREAM.agents_sha256) return { state: "current", follows };
+  if (sha256(shipped) === pinned.agents_sha256) return { state: "current", follows };
   return { state: compareVersions(herdrVersion, follows) === -1 ? "herdr-older" : "behind", follows, herdr: herdrVersion };
 }
 
@@ -214,7 +250,12 @@ export function followWarnings({ layouts, agents }) {
   const warnings = [];
   for (const result of layouts) {
     if (result.state === "edited") {
-      warnings.push(`${result.layout} differs from Herdr's current ${result.source}${result.known ? " and has edits of its own" : ", and Super Agent cannot tell whether you edited it"}. Run \`herdr-super-agent follow-herdr --refresh-layout\` to rebuild it from ${result.source}; the old file is kept beside it.`);
+      warnings.push(`${result.layout} differs from Herdr's current ${result.source}${result.known ? " and has edits of its own" : ", and Super Agent cannot tell whether you edited it"}. Run \`herdr-super-agent follow-herdr --layout ${result.layout} --refresh-layout\` to rebuild it from ${result.source}; the old file is kept beside it.`);
+    }
+    if (result.state === "no-source" && result.reason !== "unrecorded") {
+      warnings.push(result.reason === "missing"
+        ? `${result.layout} no longer follows Herdr: its source layout ${result.source} is gone.`
+        : `${result.layout} no longer follows Herdr: its source layout ${result.source} no longer has exactly one Agents panel to replace.`);
     }
     if (result.state === "updated") warnings.push(`${result.layout} was rebuilt from Herdr's current ${result.source}.`);
     if (result.state === "refreshed") warnings.push(`${result.layout} was rebuilt from Herdr's current ${result.source}; your previous version is ${result.backup}.`);

@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
-import { UPSTREAM, agentsDrift, compareVersions, followHerdr, followLayout, followWarnings, patchLayout, saveBase } from "../mods/super-agent/lib/follow.mjs";
+import { upstream, agentsDrift, compareVersions, namesLayout, followHerdr, followLayout, followWarnings, patchLayout, saveBase } from "../mods/super-agent/lib/follow.mjs";
 
 const MOD = "super-agent";
 const NODE = "/usr/bin/node";
@@ -39,6 +39,8 @@ function install(dir, source, { base = true } = {}) {
 
 const follow = (dir, options = {}) => followLayout({ appHome: dir, modName: MOD, layoutName: "super-agent-main", herdrVersion: "0.1.17", ...options });
 
+const UPSTREAM = upstream();
+
 test("upstream.json records the Agents mod kept in upstream/", () => {
   const sha = createHash("sha256").update(readFileSync(resolve("upstream/agents-main.js"))).digest("hex");
   assert.equal(UPSTREAM.agents_sha256, sha);
@@ -66,6 +68,9 @@ test("an untouched layout is rebuilt from its changed source, keeping its Agents
   assert.deepEqual(layout.cloned_from, { name: "main", version: "0.1.17" });
   assert.equal(layout.id, "root");
   assert.equal(follow(dir).state, "current");
+  // Matching its source again refreshes the remembered base, so the next Herdr change rebuilds it.
+  put(dir, "main", shipped());
+  assert.equal(follow(dir).state, "updated");
 });
 
 test("a layout with its own edits is left alone until a refresh, which keeps a backup", () => {
@@ -79,6 +84,7 @@ test("a layout with its own edits is left alone until a refresh, which keeps a b
   assert.equal(get(dir, "super-agent-main").children[0].size.px, 300);
   const result = follow(dir, { refresh: true, now: 7 });
   assert.equal(result.state, "refreshed");
+  assert.match(followWarnings({ layouts: [{ ...result, state: "edited", known: true }], agents: { state: "current" } }).join(), /--layout super-agent-main --refresh-layout/);
   assert.equal(JSON.parse(readFileSync(result.backup, "utf8")).children[0].size.px, 300);
   assert.equal(get(dir, "super-agent-main").children[1].padding, 12);
 });
@@ -142,6 +148,45 @@ test("a rebuilt layout Herdr reports an error for is put back", () => {
   assert.equal(result.layouts[0].state, "failed");
   assert.equal(result.layouts[0].previous, undefined);
   assert.equal(readFileSync(join(dir, "layouts", "super-agent-main.json"), "utf8"), before);
+  // The old base stays, so the next run tries again instead of calling the clone edited.
+  assert.equal(follow(dir, { dryRun: true }).state, "updated");
+});
+
+test("an error for another layout does not put this one back", () => {
+  const dir = home();
+  install(dir, shipped());
+  const second = { cloned_from: { name: "main", version: "0.1.11" }, ...patchLayout(shipped(), MOD, NODE) };
+  put(dir, "super-agent-main-2", second);
+  saveBase(dir, MOD, "super-agent-main-2", shipped());
+  put(dir, "main", shipped({ extra: true }));
+  const herdrApp = (args) => args[0] === "--version" ? "herdr-app 0.1.17" : JSON.stringify({ errors: [{ message: "bad layout super-agent-main-2.json" }] });
+  const states = Object.fromEntries(followHerdr({ appHome: dir, modName: MOD, herdrApp, settle: 0 }).layouts.map((l) => [l.layout, l.state]));
+  assert.deepEqual(states, { "super-agent-main": "updated", "super-agent-main-2": "failed" });
+  assert.equal(namesLayout("x super-agent-main.json", "super-agent-main"), true);
+  assert.equal(namesLayout("x super-agent-main-2.json", "super-agent-main"), false);
+});
+
+test("a rebuild that cannot be checked with herdr-app status is put back", () => {
+  const dir = home();
+  install(dir, shipped());
+  put(dir, "main", shipped({ extra: true }));
+  const herdrApp = (args) => { if (args[0] === "status") throw new Error("herdr-app: not found"); return "herdr-app 0.1.17"; };
+  const result = followHerdr({ appHome: dir, modName: MOD, herdrApp, settle: 0 }).layouts[0];
+  assert.equal(result.state, "failed");
+  assert.match(result.error, /could not check it.*not found/);
+  assert.equal(get(dir, "super-agent-main").children[1].padding, undefined);
+  assert.match(followWarnings({ layouts: [result], agents: { state: "current" } }).join(), /could not follow main/);
+});
+
+test("a clone whose source is gone says so; a layout that is not Super Agent's is refused", () => {
+  const dir = home();
+  install(dir, shipped());
+  const gone = follow(dir);
+  assert.deepEqual([gone.state, gone.reason], ["no-source", "missing"]);
+  assert.match(followWarnings({ layouts: [gone], agents: { state: "current" } }).join(), /main is gone/);
+  put(dir, "mine", shipped());
+  assert.throws(() => followLayout({ appHome: dir, modName: MOD, layoutName: "mine" }), /mine is not a super-agent layout/);
+  assert.throws(() => followLayout({ appHome: dir, modName: MOD, layoutName: "nope" }), /no layout named nope/);
 });
 
 test("the CLI follows every installed layout and reports warnings", () => {

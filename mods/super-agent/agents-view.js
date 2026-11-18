@@ -138,8 +138,9 @@ export class AgentsController {
       let result;
       try {
         result = await this.client.followHerdr();
-      } catch {
-        return;
+      } catch (error) {
+        // A failed layout exits 1 but still reports; anything else is shown once per message.
+        result = error.payload?.layouts ? error.payload : { herdr: null, layouts: [], warnings: [`Super Agent could not check whether its layout follows Herdr: ${error.message}`] };
       }
       // A rebuild is news each time; a warning that needs the person once per Herdr version.
       const rebuilt = new Set(result.layouts.filter((item) => item.state === "updated" || item.state === "refreshed").map((item) => item.layout));

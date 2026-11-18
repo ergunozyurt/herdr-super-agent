@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Super Agent's layout follows Herdr. Each time Herdr starts, a `super-agent-<layout>` clone whose source layout Herdr changed is rebuilt from it, if you have not edited the clone; a toast says so. An edited clone is left alone, and `herdr-super-agent follow-herdr --refresh-layout` rebuilds it, keeping the old file. Rerunning setup catches it up too.
-- A toast says when Herdr ships a newer Agents sidebar than the one Super Agent's follows.
+- Super Agent's layout follows Herdr. Each time Herdr starts, a `super-agent-<layout>` clone whose source layout Herdr changed is rebuilt from it, if you have not edited the clone; a toast says so. An edited clone is left alone, and `herdr-super-agent follow-herdr --layout <clone> --refresh-layout` rebuilds it, keeping the old file. A rebuild Herdr rejects, or that cannot be checked with `herdr-app status`, is put back with a toast. Rerunning setup catches an unedited clone up too; `setup.mjs --refresh-layout` rebuilds an edited one.
+- A toast says when Herdr ships a different Agents sidebar than the one Super Agent's follows, or asks you to update an older Herdr.
 
 ### Changed
 

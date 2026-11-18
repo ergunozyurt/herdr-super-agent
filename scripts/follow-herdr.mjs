@@ -4,6 +4,8 @@
 //   node scripts/follow-herdr.mjs --merge   merge Herdr's changes into agents-view.js (three-way, with
 //                                           upstream/agents-main.js as the common base), then record the
 //                                           new version as the base
+//                                           new version as the base (upstream/agents-main.js,
+//                                           mods/super-agent/upstream.json and NOTICE)
 // HERDR_APP_HOME picks the Herdr home to read the shipped mod from.
 
 import { spawnSync } from "node:child_process";
@@ -39,7 +41,10 @@ if (!process.argv.includes("--merge")) {
 
 if (!version) throw new Error("herdr-app --version gave no version; cannot record what was merged.");
 const merge = spawnSync("git", ["merge-file", "-L", "agents-view.js", "-L", `herdr ${upstream.herdr}`, "-L", `herdr ${version}`, fork, base, shipped], { encoding: "utf8" });
-if (merge.status < 0 || merge.error) throw merge.error ?? new Error(merge.stderr);
+// git merge-file exits with the number of conflicts (capped at 127), or 255 on error.
+if (merge.error || merge.status === null || merge.status >= 128) {
+  throw merge.error ?? new Error(`git merge-file failed (${merge.signal ?? `exit ${merge.status}`}): ${merge.stderr.trim()}`);
+}
 writeFileSync(base, shippedText);
 writeFileSync(upstreamJson, `${JSON.stringify({ herdr: version, agents_sha256: sha }, null, 2)}\n`);
 writeFileSync(notice, readFileSync(notice, "utf8").replace(/shipped \`agents\` mod, version [^.\s]+(\.[0-9]+)*\./, `shipped \`agents\` mod, version ${version}.`));
