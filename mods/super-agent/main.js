@@ -11,6 +11,10 @@ export default class SuperAgent extends View {
     this.controller.init(currentProps, cx);
   }
 
+  async close(cx) {
+    await this.controller.close?.(cx);
+  }
+
   render(cx) {
     return this.controller.render(cx);
   }

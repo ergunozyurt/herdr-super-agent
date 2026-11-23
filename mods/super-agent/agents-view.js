@@ -2,7 +2,7 @@
 
 import { div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { agents, terminals, machines, panes, focused, spaces, run, settings, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, nextCommand, props, window, layout, notify, playSound, hc } from "herdr";
+import { agents, terminals, machines, panes, focused, spaces, run, settings, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, nextCommand, props, window, layout, notify, playSound, hc, checking, setBadge } from "herdr";
 import { InboxClient } from "./inbox-client.js";
 import { HEARTBEAT } from "./thread-bar.js";
 
@@ -104,6 +104,10 @@ export class AgentsController {
     if (!Array.isArray(this.pendingPins)) this.pendingPins = [];
     if (!this.pendingPins.length) localStorage.removeItem("pins");
     this.migratingPins = new Set();
+    this.badge = null;
+    // `herdr-app check` runs init for real: claiming notifications would eat their toasts, and
+    // follow-herdr could rewrite a layout. Draw the empty sidebar and do nothing else.
+    if (checking()) return;
     cx.spawn(async (cx) => {
       await this.refresh(cx, true);
       for (;;) {
@@ -158,8 +162,25 @@ export class AgentsController {
     cx.timer.every(5000, (cx) => {
       if (this.error) cx.spawn(async (cx) => this.refresh(cx, true));
       cx.spawn(async (cx) => this.prune(cx));
+      // A request's agent can come and go without the inbox changing.
+      this.updateBadge();
       cx.notify();
     });
+  }
+
+  // The Dock badge (macOS): how many requests wait on the person. Set only when it changes.
+  updateBadge() {
+    const waiting = this.inbox.requests.filter(
+      (request) => (request.status === "unread" || request.status === "waiting-human") && this.requestAvailable(request),
+    ).length;
+    const text = waiting ? String(waiting) : null;
+    if (text === this.badge) return;
+    this.badge = text;
+    setBadge(text);
+  }
+
+  close() {
+    if (this.badge) setBadge(null);
   }
 
   async toggle(action, terminal, cx) {
@@ -209,6 +230,7 @@ export class AgentsController {
         if (settings().sounds?.enabled !== false) playSound("blocked");
       }
       this.error = null;
+      this.updateBadge();
     } catch (error) {
       this.error = error.message;
     }
