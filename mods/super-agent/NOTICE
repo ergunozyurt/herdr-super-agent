@@ -1,4 +1,4 @@
-The Agents sidebar implementation in agents-view.js is derived from the Herdr app's shipped `agents` mod, version 0.1.16.
+The Agents sidebar implementation in agents-view.js is derived from the Herdr app's shipped `agents` mod, version 0.1.17.
 upstream/agents-main.js in the source repository holds that version unchanged.
 
 Herdr is Copyright its contributors and licensed under the Apache License, Version 2.0:
