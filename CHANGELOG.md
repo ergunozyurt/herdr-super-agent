@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2026-11-23
+
+### Added
+
+- On macOS, Herdr's Dock icon shows how many requests wait on you (unread, or waiting for your reply). It clears when none do.
+
+### Fixed
+
+- `herdr-app check` no longer runs Super Agent's sidebar for real: it used to claim pending notifications, so their toasts never showed, and could rebuild a layout.
+
 ## [0.3.2] - 2026-11-23
 
 ### Changed
